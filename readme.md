@@ -59,6 +59,22 @@ This project is configured to automatically deploy to GitHub Pages when changes 
 
 The site will be available at: `https://<username>.github.io/ui-skeleton/`
 
+## Renaming the Project
+
+To rename this project to your own repository name:
+
+```bash
+make rename
+```
+
+This will:
+1. Prompt you for the new repository name (e.g., `my-app`)
+2. Update all references in the codebase
+3. Convert the name to Title Case for display (e.g., "My App")
+4. Reinstall dependencies with the new name
+
+After renaming, review the changes with `git diff` and commit them.
+
 ## Makefile Targets
 
 - `make dev` - Start development server
@@ -66,6 +82,7 @@ The site will be available at: `https://<username>.github.io/ui-skeleton/`
 - `make preview` - Preview production build
 - `make install` - Install dependencies
 - `make clean` - Remove node_modules and dist directories
+- `make rename` - Rename the project (interactive)
 
 ## Tech Stack
 
