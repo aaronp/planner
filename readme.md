@@ -1,4 +1,4 @@
-# Venture Plan
+# planner
 
 A React web application built with Bun, Vite, and TypeScript.
 
@@ -57,7 +57,7 @@ This project is configured to automatically deploy to GitHub Pages when changes 
 3. Under "Build and deployment", set Source to "GitHub Actions"
 4. Push to the `master` branch to trigger deployment
 
-The site will be available at: `https://<username>.github.io/ui-skeleton/`
+The site will be available at: `https://<username>.github.io/planner/`
 
 ## Renaming the Project
 
