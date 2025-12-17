@@ -26,6 +26,7 @@ import { addMonths } from "./utils/dateUtils";
 import { fmtCurrency, uid, clamp01 } from "./utils/formatUtils";
 import { computeSeries } from "./utils/modelEngine";
 import { formatMonthLabel } from "./utils/dateUtils";
+import { isValidDuration, isValidDependency } from "./utils/taskUtils";
 
 import { DataTable } from "./components/DataTable";
 import { TimelineView } from "./components/TimelineView";
@@ -196,7 +197,7 @@ export default function App() {
                                 name: "New Task",
                                 phase: "Other",
                                 start: data.meta.start,
-                                end: addMonths(data.meta.start, 1),
+                                duration: "1m",
                                 costOneOff: 0,
                                 costMonthly: 0,
                                 dependsOn: [],
@@ -228,27 +229,81 @@ export default function App() {
                                         </Select>
                                     ),
                                 },
-                                { key: "start", header: "Start", width: "150px", input: "date" },
-                                { key: "end", header: "End", width: "150px", input: "date" },
+                                {
+                                    key: "start",
+                                    header: "Start",
+                                    width: "150px",
+                                    render: (v, row) => {
+                                        const hasDeps = row.dependsOn && row.dependsOn.length > 0;
+                                        return (
+                                            <Input
+                                                type="date"
+                                                className="h-8 rounded-xl"
+                                                value={v || ""}
+                                                disabled={hasDeps}
+                                                title={hasDeps ? "Start date is calculated from dependencies" : ""}
+                                                onChange={(e) => {
+                                                    setTasks(data.tasks.map((t) => (t.id === row.id ? { ...t, start: e.target.value } : t)));
+                                                }}
+                                            />
+                                        );
+                                    },
+                                },
+                                {
+                                    key: "duration",
+                                    header: "Duration (e.g., 2w, 3m)",
+                                    width: "180px",
+                                    render: (v, row) => {
+                                        const isValid = isValidDuration(v || "");
+                                        return (
+                                            <div>
+                                                <Input
+                                                    className={`h-8 rounded-xl ${!isValid ? "bg-red-50 border-red-300" : ""}`}
+                                                    value={v || ""}
+                                                    placeholder="e.g., 2w, 3m (empty = ongoing)"
+                                                    title={!isValid ? "Invalid format. Use: 2w, 3m, 1y, 5d" : ""}
+                                                    onChange={(e) => {
+                                                        setTasks(data.tasks.map((t) => (t.id === row.id ? { ...t, duration: e.target.value } : t)));
+                                                    }}
+                                                />
+                                                {!isValid && v && (
+                                                    <div className="text-xs text-red-600 mt-1">Invalid format</div>
+                                                )}
+                                            </div>
+                                        );
+                                    },
+                                },
                                 { key: "costOneOff", header: "One-off cost", width: "140px", input: "number" },
                                 { key: "costMonthly", header: "Monthly cost", width: "140px", input: "number" },
                                 {
                                     key: "dependsOn",
-                                    header: "Depends on (comma IDs)",
-                                    width: "220px",
-                                    render: (v, row) => (
-                                        <Input
-                                            className="h-8 rounded-xl"
-                                            value={(Array.isArray(v) ? v.join(",") : "") as any}
-                                            onChange={(e) => {
-                                                const ids = e.target.value
-                                                    .split(",")
-                                                    .map((s) => s.trim())
-                                                    .filter(Boolean);
-                                                setTasks(data.tasks.map((t) => (t.id === row.id ? { ...t, dependsOn: ids } : t)));
-                                            }}
-                                        />
-                                    ),
+                                    header: "Depends on (e.g., T1e+2w)",
+                                    width: "240px",
+                                    render: (v, row) => {
+                                        const deps = Array.isArray(v) ? v : [];
+                                        const allValid = deps.length === 0 || deps.every((d) => isValidDependency(d));
+                                        const depString = deps.join(",");
+                                        return (
+                                            <div>
+                                                <Input
+                                                    className={`h-8 rounded-xl ${!allValid ? "bg-red-50 border-red-300" : ""}`}
+                                                    value={depString}
+                                                    placeholder="e.g., T1, T1e+2w, T2s+3d"
+                                                    title={!allValid ? "Invalid dependency format" : ""}
+                                                    onChange={(e) => {
+                                                        const ids = e.target.value
+                                                            .split(",")
+                                                            .map((s) => s.trim())
+                                                            .filter(Boolean);
+                                                        setTasks(data.tasks.map((t) => (t.id === row.id ? { ...t, dependsOn: ids } : t)));
+                                                    }}
+                                                />
+                                                {!allValid && deps.length > 0 && (
+                                                    <div className="text-xs text-red-600 mt-1">Invalid dependency format</div>
+                                                )}
+                                            </div>
+                                        );
+                                    },
                                 },
                             ]}
                         />

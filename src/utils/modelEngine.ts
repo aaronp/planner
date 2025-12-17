@@ -1,6 +1,114 @@
-import type { VentureData, Segment, ISODate, YearAgg } from "../types";
-import { monthIndexFromStart, addMonths, isWithin } from "./dateUtils";
+import type { VentureData, Segment, ISODate, YearAgg, Task, ComputedTask } from "../types";
+import { monthIndexFromStart, addMonths, isWithin, todayISO } from "./dateUtils";
 import { clamp01, round2 } from "./formatUtils";
+import { parseDependency, addDuration } from "./taskUtils";
+
+/**
+ * Compute task start and end dates based on dependencies and durations
+ * @param tasks - Array of tasks
+ * @param fallbackStart - Fallback start date for tasks without dependencies or manual start
+ * @returns Array of computed tasks with calculated start/end dates
+ */
+export function computeTaskDates(tasks: Task[], fallbackStart: ISODate): ComputedTask[] {
+    const taskMap = new Map<string, ComputedTask>();
+    const computed = new Set<string>();
+    const computing = new Set<string>(); // For circular dependency detection
+
+    // Helper to compute a single task
+    const computeTask = (task: Task): ComputedTask => {
+        // Already computed
+        if (computed.has(task.id)) {
+            return taskMap.get(task.id)!;
+        }
+
+        // Circular dependency detection
+        if (computing.has(task.id)) {
+            console.warn(`Circular dependency detected for task ${task.id}. Using fallback start date.`);
+            const computedTask: ComputedTask = {
+                ...task,
+                computedStart: task.start || fallbackStart,
+                computedEnd: task.duration ? addDuration(task.start || fallbackStart, task.duration) : undefined,
+            };
+            taskMap.set(task.id, computedTask);
+            computed.add(task.id);
+            return computedTask;
+        }
+
+        computing.add(task.id);
+
+        let computedStart: ISODate;
+
+        // If task has dependencies, compute start based on dependencies
+        if (task.dependsOn && task.dependsOn.length > 0) {
+            let latestDate: ISODate | null = null;
+
+            for (const depStr of task.dependsOn) {
+                const dep = parseDependency(depStr);
+
+                // Skip invalid dependency strings
+                if (!dep) {
+                    continue;
+                }
+
+                const depTask = tasks.find((t) => t.id === dep.taskId);
+
+                if (!depTask) {
+                    continue;
+                }
+
+                // Recursively compute the dependency task
+                const computedDepTask = computeTask(depTask);
+
+                // Get the anchor date (start or end of dependency)
+                let anchorDate: ISODate;
+                if (dep.anchor === "start") {
+                    anchorDate = computedDepTask.computedStart;
+                } else {
+                    // anchor === "end"
+                    anchorDate = computedDepTask.computedEnd || computedDepTask.computedStart;
+                }
+
+                // Apply offset if specified
+                let finalDate = anchorDate;
+                if (dep.offset) {
+                    const offsetResult = addDuration(anchorDate, dep.offset);
+                    // If offset is invalid, skip it
+                    if (offsetResult) {
+                        finalDate = offsetResult;
+                    }
+                }
+
+                // Track the latest date among all dependencies
+                if (!latestDate || new Date(finalDate) > new Date(latestDate)) {
+                    latestDate = finalDate;
+                }
+            }
+
+            computedStart = latestDate || task.start || fallbackStart;
+        } else {
+            // No dependencies, use manual start or fallback
+            computedStart = task.start || fallbackStart;
+        }
+
+        // Compute end date from duration
+        const computedEnd = task.duration ? addDuration(computedStart, task.duration) : undefined;
+
+        const computedTask: ComputedTask = {
+            ...task,
+            computedStart,
+            computedEnd,
+        };
+
+        taskMap.set(task.id, computedTask);
+        computed.add(task.id);
+        computing.delete(task.id);
+
+        return computedTask;
+    };
+
+    // Compute all tasks
+    return tasks.map(computeTask);
+}
 
 export function segmentActiveUnitsAtMonth(seg: Segment, ventureStart: ISODate, month: number): number {
     const entryM = monthIndexFromStart(ventureStart, seg.entry);
@@ -28,13 +136,19 @@ export function computeSeries(data: VentureData) {
     const { start, horizonMonths } = data.meta;
     const months = Array.from({ length: Math.max(1, horizonMonths) }, (_, i) => i);
 
+    // Compute task dates with dependencies
+    const computedTasks = computeTaskDates(data.tasks, start);
+
     const taskMonthlyCost = (m: number) => {
         const monthStartISO = addMonths(start, m);
-        return data.tasks.reduce((sum, t) => (isWithin(monthStartISO, t.start, t.end) ? sum + t.costMonthly : sum), 0);
+        return computedTasks.reduce(
+            (sum, t) => (isWithin(monthStartISO, t.computedStart, t.computedEnd) ? sum + t.costMonthly : sum),
+            0
+        );
     };
 
     const taskOneOffCost = (m: number) =>
-        data.tasks.reduce((sum, t) => (monthIndexFromStart(start, t.start) === m ? sum + t.costOneOff : sum), 0);
+        computedTasks.reduce((sum, t) => (monthIndexFromStart(start, t.computedStart) === m ? sum + t.costOneOff : sum), 0);
 
     const opexMonthly = (m: number) => {
         const monthStartISO = addMonths(start, m);

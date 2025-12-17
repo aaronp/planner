@@ -3,10 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
-import type { VentureData, Task } from "../types";
+import type { VentureData, ComputedTask } from "../types";
 import { monthIndexFromStart, addMonths, formatMonthLabel, isWithin } from "../utils/dateUtils";
 import { fmtCurrency, fmtCompact, clamp01 } from "../utils/formatUtils";
-import { computeSeries, segmentActiveUnitsAtMonth } from "../utils/modelEngine";
+import { computeSeries, segmentActiveUnitsAtMonth, computeTaskDates } from "../utils/modelEngine";
 import { SankeyCard } from "./SankeyCard";
 
 export function TimelineView({
@@ -29,18 +29,28 @@ export function TimelineView({
     const series = useMemo(() => computeSeries(data), [data]);
     const snap = series[Math.min(series.length - 1, Math.max(0, month))] ?? series[0];
 
-    const taskBlockedByDeps = (t: Task) => {
+    // Compute task dates
+    const computedTasks = useMemo(() => computeTaskDates(data.tasks, start), [data.tasks, start]);
+
+    const taskBlockedByDeps = (t: ComputedTask) => {
         if (!t.dependsOn?.length) return false;
-        const tStartM = monthIndexFromStart(start, t.start);
+        const tStartM = monthIndexFromStart(start, t.computedStart);
         return t.dependsOn
-            .map((id) => data.tasks.find((x) => x.id === id))
+            .map((depStr) => {
+                // Extract just the task ID (ignore s/e and offsets for now)
+                const taskId = depStr.match(/^([a-zA-Z0-9_]+)/)?.[1];
+                return computedTasks.find((x) => x.id === taskId);
+            })
             .filter(Boolean)
-            .some((dep) => monthIndexFromStart(start, (dep as Task).end) > tStartM);
+            .some((dep) => {
+                const depEnd = (dep as ComputedTask).computedEnd || (dep as ComputedTask).computedStart;
+                return monthIndexFromStart(start, depEnd) > tStartM;
+            });
     };
 
-    const taskCostAtCursor = (t: Task) => {
-        const active = isWithin(monthISO, t.start, t.end);
-        const oneOff = monthIndexFromStart(start, t.start) === month ? t.costOneOff : 0;
+    const taskCostAtCursor = (t: ComputedTask) => {
+        const active = isWithin(monthISO, t.computedStart, t.computedEnd);
+        const oneOff = monthIndexFromStart(start, t.computedStart) === month ? t.costOneOff : 0;
         return (active ? t.costMonthly : 0) + oneOff;
     };
 
@@ -98,14 +108,14 @@ export function TimelineView({
                             {/* Tasks */}
                             <div className="mt-2">
                                 <div className="px-2 py-1 text-xs font-medium text-muted-foreground">Inception / Execution</div>
-                                {data.tasks
+                                {computedTasks
                                     .slice()
-                                    .sort((a, b) => monthIndexFromStart(start, a.start) - monthIndexFromStart(start, b.start))
+                                    .sort((a, b) => monthIndexFromStart(start, a.computedStart) - monthIndexFromStart(start, b.computedStart))
                                     .map((t) => {
-                                        const s = monthIndexFromStart(start, t.start);
-                                        const e = Math.max(s, monthIndexFromStart(start, t.end));
+                                        const s = monthIndexFromStart(start, t.computedStart);
+                                        const e = t.computedEnd ? Math.max(s, monthIndexFromStart(start, t.computedEnd)) : s;
                                         const blocked = taskBlockedByDeps(t);
-                                        const active = isWithin(monthISO, t.start, t.end);
+                                        const active = isWithin(monthISO, t.computedStart, t.computedEnd);
                                         const nowCost = taskCostAtCursor(t);
 
                                         return (
@@ -143,7 +153,7 @@ export function TimelineView({
                                                             {inside ? (
                                                                 <div
                                                                     className={`h-full m-[3px] rounded-lg ${active ? "bg-primary/25" : "bg-muted"} ${blocked ? "ring-1 ring-destructive/60" : ""}`}
-                                                                    title={`${t.name}\n${t.start} → ${t.end}\nDepends: ${t.dependsOn.join(", ") || "—"}`}
+                                                                    title={`${t.name}\n${t.computedStart} → ${t.computedEnd || "ongoing"}\nDuration: ${t.duration || "ongoing"}\nDepends: ${t.dependsOn.join(", ") || "—"}`}
                                                                 />
                                                             ) : null}
                                                         </div>

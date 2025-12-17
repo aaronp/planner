@@ -8,11 +8,16 @@ export type Task = {
     id: string;
     name: string;
     phase: "Inception" | "Build" | "Deploy" | "GoToMarket" | "Other";
-    start: ISODate;
-    end: ISODate;
+    start?: ISODate; // Manual start (only if no dependencies), otherwise calculated
+    duration?: string; // e.g., "2w", "3m", "1y" - empty means ongoing task
     costOneOff: number;
     costMonthly: number;
-    dependsOn: string[];
+    dependsOn: string[]; // Format: ["T1", "T1e+2w", "T2s+3d"] - ID + optional (s|e) + optional +duration
+};
+
+export type ComputedTask = Task & {
+    computedStart: ISODate; // Calculated start based on dependencies or manual start
+    computedEnd?: ISODate; // Calculated from computedStart + duration (undefined if ongoing)
 };
 
 export type Segment = {
