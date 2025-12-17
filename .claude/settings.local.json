@@ -19,7 +19,13 @@
       "Bash(cat:*)",
       "Bash(bun run dev)",
       "Bash(lsof:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(rm:*)",
+      "Bash(node --version:*)",
+      "Bash(npx vite build:*)",
+      "Bash(mv:*)",
+      "Bash(DEBUG=vite:*)",
+      "Bash(bunx vite build:*)"
     ],
     "deny": [],
     "ask": []

@@ -46,9 +46,13 @@ export type Market = {
 
 export type PricingModel = "subscription" | "usage" | "transaction" | "license" | "hybrid";
 
+export type DeliveryCostModel =
+    | { type: "grossMargin"; marginPct: Distribution }
+    | { type: "perUnitCost"; costPerUnit: Distribution };
+
 export type UnitEconomics = {
     pricePerUnit: Distribution;
-    grossMargin: Distribution; // %
+    deliveryCostModel: DeliveryCostModel;
     billingFrequency: "monthly" | "annual";
     contractLengthMonths?: Distribution;
     churnRate?: Distribution; // % monthly churn
@@ -62,10 +66,9 @@ export type AdoptionModel = {
     expansionRate?: Distribution; // % monthly expansion
 };
 
-export type StreamCosts = {
-    cacPerUnit: Distribution; // Customer Acquisition Cost per unit
-    onboardingCost?: Distribution; // One-time onboarding cost per unit
-    variableCostPerUnit?: Distribution; // Variable delivery cost per unit per month
+export type AcquisitionCosts = {
+    cacPerUnit: Distribution; // Sales & marketing cost to acquire one new unit (not included in gross margin)
+    onboardingCostPerUnit?: Distribution; // One-off implementation / setup cost incurred after acquisition
 };
 
 export type RevenueStream = {
@@ -77,7 +80,7 @@ export type RevenueStream = {
     unlockEventId?: string; // Timeline event that unlocks this stream
     unitEconomics: UnitEconomics;
     adoptionModel: AdoptionModel;
-    streamCosts: StreamCosts;
+    acquisitionCosts: AcquisitionCosts;
 };
 
 // ============================================================================

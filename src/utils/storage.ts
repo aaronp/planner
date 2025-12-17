@@ -129,7 +129,10 @@ export const DEFAULT: VentureData = {
             unlockEventId: "TL2",
             unitEconomics: {
                 pricePerUnit: { type: "triangular", min: 35, mode: 40, max: 50 },
-                grossMargin: createSimpleDistribution(75),
+                deliveryCostModel: {
+                    type: "grossMargin",
+                    marginPct: createSimpleDistribution(75),
+                },
                 billingFrequency: "monthly",
                 contractLengthMonths: createSimpleDistribution(12),
                 churnRate: { type: "triangular", min: 3, mode: 5, max: 8 },
@@ -141,10 +144,9 @@ export const DEFAULT: VentureData = {
                 churnRate: { type: "triangular", min: 3, mode: 5, max: 8 },
                 expansionRate: createSimpleDistribution(2),
             },
-            streamCosts: {
+            acquisitionCosts: {
                 cacPerUnit: { type: "triangular", min: 20, mode: 25, max: 35 },
-                onboardingCost: createSimpleDistribution(50),
-                variableCostPerUnit: createSimpleDistribution(10),
+                onboardingCostPerUnit: createSimpleDistribution(50),
             },
         },
         {
@@ -156,7 +158,10 @@ export const DEFAULT: VentureData = {
             unlockEventId: "TL3",
             unitEconomics: {
                 pricePerUnit: { type: "triangular", min: 100, mode: 120, max: 150 },
-                grossMargin: createSimpleDistribution(80),
+                deliveryCostModel: {
+                    type: "grossMargin",
+                    marginPct: createSimpleDistribution(80),
+                },
                 billingFrequency: "annual",
                 contractLengthMonths: { type: "triangular", min: 12, mode: 24, max: 36 },
                 churnRate: { type: "triangular", min: 2, mode: 3, max: 5 },
@@ -168,10 +173,9 @@ export const DEFAULT: VentureData = {
                 churnRate: { type: "triangular", min: 2, mode: 3, max: 5 },
                 expansionRate: createSimpleDistribution(5),
             },
-            streamCosts: {
+            acquisitionCosts: {
                 cacPerUnit: { type: "triangular", min: 70, mode: 80, max: 100 },
-                onboardingCost: createSimpleDistribution(200),
-                variableCostPerUnit: createSimpleDistribution(15),
+                onboardingCostPerUnit: createSimpleDistribution(200),
             },
         },
     ] as RevenueStream[],

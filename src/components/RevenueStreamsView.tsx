@@ -73,16 +73,24 @@ function HelpLabel({ label, help }: { label: string; help: string }) {
 function computeWarnings(stream: RevenueStream, horizonMonths: number): Warning[] {
     const w: Warning[] = [];
 
-    const gm = getDistributionMode(stream.unitEconomics.grossMargin);
-    if (gm < 0 || gm > 100) w.push({ key: "gm-range", label: "Gross margin out of range", severity: "warn" });
-    else if (gm < 30) w.push({ key: "gm-low", label: "Low gross margin", severity: "info" });
+    // Check delivery cost model
+    if (stream.unitEconomics.deliveryCostModel.type === "grossMargin") {
+        const gm = getDistributionMode(stream.unitEconomics.deliveryCostModel.marginPct);
+        if (gm < 0 || gm > 100) w.push({ key: "gm-range", label: "Gross margin out of range", severity: "warn" });
+        else if (gm < 30) w.push({ key: "gm-low", label: "Low gross margin", severity: "info" });
+    } else {
+        const costPerUnit = getDistributionMode(stream.unitEconomics.deliveryCostModel.costPerUnit);
+        const pricePerUnit = getDistributionMode(stream.unitEconomics.pricePerUnit);
+        if (costPerUnit < 0) w.push({ key: "cost-neg", label: "Delivery cost is negative", severity: "warn" });
+        if (costPerUnit >= pricePerUnit) w.push({ key: "cost-high", label: "Delivery cost >= price", severity: "warn" });
+    }
 
     const maxUnits = stream.adoptionModel.maxUnits;
     if (typeof maxUnits === "number" && stream.adoptionModel.initialUnits > maxUnits) {
         w.push({ key: "som-initial", label: "Initial units exceed SOM cap", severity: "warn" });
     }
 
-    const cacMode = getDistributionMode(stream.streamCosts.cacPerUnit);
+    const cacMode = getDistributionMode(stream.acquisitionCosts.cacPerUnit);
     if (cacMode < 0) w.push({ key: "cac-neg", label: "CAC is negative", severity: "warn" });
 
     const priceMode = getDistributionMode(stream.unitEconomics.pricePerUnit);
@@ -603,19 +611,94 @@ function StreamEditor({
                                     })
                                 }
                             />
-                            <DistInput
-                                label="Gross margin"
-                                help="% of revenue kept after direct delivery costs (before CAC and overhead)."
-                                value={stream.unitEconomics.grossMargin}
-                                suffix="%"
-                                hint="Revenue kept after direct costs (before CAC)."
-                                onChange={(v) =>
-                                    onUpdate({
-                                        ...stream,
-                                        unitEconomics: { ...stream.unitEconomics, grossMargin: v },
-                                    })
-                                }
-                            />
+
+                            <div className="rounded-2xl border p-4">
+                                <HelpLabel
+                                    label="Delivery cost model"
+                                    help="Choose how you want to model the cost to deliver this service. Most users prefer gross margin."
+                                />
+                                <div className="mt-3 space-y-2">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name={`delivery-cost-${stream.id}`}
+                                            checked={stream.unitEconomics.deliveryCostModel.type === "grossMargin"}
+                                            onChange={() => {
+                                                onUpdate({
+                                                    ...stream,
+                                                    unitEconomics: {
+                                                        ...stream.unitEconomics,
+                                                        deliveryCostModel: {
+                                                            type: "grossMargin",
+                                                            marginPct: createSimpleDistribution(70),
+                                                        },
+                                                    },
+                                                });
+                                            }}
+                                            className="h-4 w-4"
+                                        />
+                                        <span className="text-sm">I know my gross margin %</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name={`delivery-cost-${stream.id}`}
+                                            checked={stream.unitEconomics.deliveryCostModel.type === "perUnitCost"}
+                                            onChange={() => {
+                                                onUpdate({
+                                                    ...stream,
+                                                    unitEconomics: {
+                                                        ...stream.unitEconomics,
+                                                        deliveryCostModel: {
+                                                            type: "perUnitCost",
+                                                            costPerUnit: createSimpleDistribution(5),
+                                                        },
+                                                    },
+                                                });
+                                            }}
+                                            className="h-4 w-4"
+                                        />
+                                        <span className="text-sm">I know my delivery cost per unit</span>
+                                    </label>
+                                </div>
+                                <div className="mt-4">
+                                    {stream.unitEconomics.deliveryCostModel.type === "grossMargin" ? (
+                                        <DistInput
+                                            label="Gross margin"
+                                            help="% of revenue kept after direct delivery costs (not including CAC or overhead)."
+                                            value={stream.unitEconomics.deliveryCostModel.marginPct}
+                                            suffix="%"
+                                            hint="Revenue kept after direct delivery costs"
+                                            onChange={(v) =>
+                                                onUpdate({
+                                                    ...stream,
+                                                    unitEconomics: {
+                                                        ...stream.unitEconomics,
+                                                        deliveryCostModel: { type: "grossMargin", marginPct: v },
+                                                    },
+                                                })
+                                            }
+                                        />
+                                    ) : (
+                                        <DistInput
+                                            label="Delivery cost per unit"
+                                            help="Direct cost to deliver one unit (e.g., hosting, COGS). Does not include CAC or overhead."
+                                            value={stream.unitEconomics.deliveryCostModel.costPerUnit}
+                                            suffix="£"
+                                            hint={`Cost per ${stream.revenueUnit}`}
+                                            onChange={(v) =>
+                                                onUpdate({
+                                                    ...stream,
+                                                    unitEconomics: {
+                                                        ...stream.unitEconomics,
+                                                        deliveryCostModel: { type: "perUnitCost", costPerUnit: v },
+                                                    },
+                                                })
+                                            }
+                                        />
+                                    )}
+                                </div>
+                            </div>
 
                             <div className="rounded-2xl border p-4 md:col-span-2">
                                 <div className="flex items-center justify-between gap-3">
@@ -783,69 +866,73 @@ function StreamEditor({
 
                     {/* Tab 5: Costs */}
                     <TabsContent value="costs" className="mt-4">
-                        <div className="grid gap-6 md:grid-cols-2">
-                            <DistInput
-                                label="CAC per unit"
-                                help="Customer Acquisition Cost: sales + marketing cost to acquire one unit/customer for this stream."
-                                value={stream.streamCosts.cacPerUnit}
-                                suffix="£"
-                                hint={`Cost to acquire one ${stream.revenueUnit}`}
-                                onChange={(v) =>
-                                    onUpdate({ ...stream, streamCosts: { ...stream.streamCosts, cacPerUnit: v } })
-                                }
-                            />
-
-                            <DistInput
-                                label="Variable cost per unit"
-                                help="Per-unit cost to deliver the product/service (payment fees, infra per txn, support per customer)."
-                                value={stream.streamCosts.variableCostPerUnit ?? createSimpleDistribution(0)}
-                                suffix="£"
-                                hint="Per-unit delivery / payment fees / support (optional)."
-                                onChange={(v) =>
-                                    onUpdate({
-                                        ...stream,
-                                        streamCosts: { ...stream.streamCosts, variableCostPerUnit: v },
-                                    })
-                                }
-                            />
-
-                            <div className="rounded-2xl border p-4 md:col-span-2">
-                                <div className="flex items-center justify-between gap-3">
-                                    <div>
-                                        <div className="text-sm font-medium">Onboarding cost</div>
-                                        <div className="text-xs text-muted-foreground">
-                                            Optional one-off cost per unit / customer.
-                                        </div>
-                                    </div>
-                                    <Switch
-                                        checked={!!stream.streamCosts.onboardingCost}
-                                        onCheckedChange={(on) =>
-                                            onUpdate({
-                                                ...stream,
-                                                streamCosts: {
-                                                    ...stream.streamCosts,
-                                                    onboardingCost: on ? createSimpleDistribution(100) : undefined,
-                                                },
-                                            })
-                                        }
-                                    />
+                        <div className="space-y-4">
+                            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                                <div className="text-sm font-medium text-blue-900">Acquisition Costs</div>
+                                <div className="text-xs text-blue-700 mt-1">
+                                    These costs are incurred once per new unit and do not affect gross margin.
+                                    They impact cash flow and payback period.
                                 </div>
-                                {stream.streamCosts.onboardingCost ? (
-                                    <div className="mt-4">
-                                        <DistInput
-                                            label="Onboarding cost per unit"
-                                            help="One-off cost incurred when a new unit/customer is onboarded (setup, implementation, KYC, etc)."
-                                            value={stream.streamCosts.onboardingCost}
-                                            suffix="£"
-                                            onChange={(v) =>
+                            </div>
+
+                            <div className="grid gap-6 md:grid-cols-2">
+                                <DistInput
+                                    label="CAC per unit"
+                                    help="Sales & marketing cost to acquire one new unit (not included in gross margin)."
+                                    value={stream.acquisitionCosts.cacPerUnit}
+                                    suffix="£"
+                                    hint={`Cost to acquire one ${stream.revenueUnit}`}
+                                    onChange={(v) =>
+                                        onUpdate({
+                                            ...stream,
+                                            acquisitionCosts: { ...stream.acquisitionCosts, cacPerUnit: v },
+                                        })
+                                    }
+                                />
+
+                                <div className="rounded-2xl border p-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm font-medium">Onboarding cost per unit</div>
+                                            <div className="text-xs text-muted-foreground">
+                                                One-off implementation / setup cost incurred after acquisition.
+                                            </div>
+                                        </div>
+                                        <Switch
+                                            checked={!!stream.acquisitionCosts.onboardingCostPerUnit}
+                                            onCheckedChange={(on) =>
                                                 onUpdate({
                                                     ...stream,
-                                                    streamCosts: { ...stream.streamCosts, onboardingCost: v },
+                                                    acquisitionCosts: {
+                                                        ...stream.acquisitionCosts,
+                                                        onboardingCostPerUnit: on
+                                                            ? createSimpleDistribution(100)
+                                                            : undefined,
+                                                    },
                                                 })
                                             }
                                         />
                                     </div>
-                                ) : null}
+                                    {stream.acquisitionCosts.onboardingCostPerUnit ? (
+                                        <div className="mt-4">
+                                            <DistInput
+                                                label="Onboarding cost per unit"
+                                                help="One-off implementation / setup cost incurred after acquisition (setup, implementation, KYC, etc)."
+                                                value={stream.acquisitionCosts.onboardingCostPerUnit}
+                                                suffix="£"
+                                                onChange={(v) =>
+                                                    onUpdate({
+                                                        ...stream,
+                                                        acquisitionCosts: {
+                                                            ...stream.acquisitionCosts,
+                                                            onboardingCostPerUnit: v,
+                                                        },
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                    ) : null}
+                                </div>
                             </div>
                         </div>
                     </TabsContent>
@@ -885,7 +972,7 @@ export function RevenueStreamsView({
             unlockEventId: timeline[0]?.id,
             unitEconomics: {
                 pricePerUnit: createSimpleDistribution(25),
-                grossMargin: createSimpleDistribution(70),
+                deliveryCostModel: { type: "grossMargin", marginPct: createSimpleDistribution(70) },
                 billingFrequency: "monthly",
                 contractLengthMonths: createSimpleDistribution(12),
                 churnRate: createSimpleDistribution(5),
@@ -897,10 +984,9 @@ export function RevenueStreamsView({
                 churnRate: createSimpleDistribution(5),
                 expansionRate: createSimpleDistribution(0),
             },
-            streamCosts: {
+            acquisitionCosts: {
                 cacPerUnit: createSimpleDistribution(300),
-                onboardingCost: createSimpleDistribution(0),
-                variableCostPerUnit: createSimpleDistribution(2),
+                onboardingCostPerUnit: createSimpleDistribution(0),
             },
         };
 
