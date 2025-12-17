@@ -13,7 +13,13 @@
       "Bash(bunx tailwindcss:*)",
       "Bash(npx tailwindcss init -p)",
       "Bash(bun remove:*)",
-      "Bash(timeout 5 bun run dev:*)"
+      "Bash(timeout 5 bun run dev:*)",
+      "Bash(bun add:*)",
+      "Bash(bunx tsc:*)",
+      "Bash(cat:*)",
+      "Bash(bun run dev)",
+      "Bash(lsof:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []
