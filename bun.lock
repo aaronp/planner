@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "venture-plan",
+      "name": "ui-skeleton",
       "dependencies": {
         "react": "^18.3.1",
         "react-dom": "^18.3.1",

@@ -3,7 +3,11 @@
     "allow": [
       "Bash(bun create:*)",
       "Bash(bun install)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(bun run build:*)"
     ],
     "deny": [],
     "ask": []

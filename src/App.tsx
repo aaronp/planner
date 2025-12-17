@@ -7,7 +7,7 @@ function App() {
   return (
     <>
       <div>
-        <h1>Venture Plan</h1>
+        <h1>UI Skeleton</h1>
       </div>
       <div className="card">
         <button onClick={() => setCount((count) => count + 1)}>
