@@ -1,5 +1,5 @@
 import type { VentureData, Distribution } from "../types";
-import { buildMonthlySnapshots } from "./modelEngine";
+import { computeSeries } from "./modelEngine";
 
 /**
  * Monte Carlo simulation for business planning
@@ -175,7 +175,7 @@ export function runMonteCarloSimulation(data: VentureData, numSimulations = 1000
     for (let i = 0; i < numSimulations; i++) {
         const percentile = i / (numSimulations - 1);
         const sampledData = sampleVentureData(data, percentile);
-        const snapshots = buildMonthlySnapshots(sampledData);
+        const snapshots = computeSeries(sampledData);
 
         const revenue = snapshots.map((s) => s.revenue ?? 0);
         const costs = snapshots.map((s) => s.costs ?? 0);

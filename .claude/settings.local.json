@@ -25,7 +25,13 @@
       "Bash(npx vite build:*)",
       "Bash(mv:*)",
       "Bash(DEBUG=vite:*)",
-      "Bash(bunx vite build:*)"
+      "Bash(bunx vite build:*)",
+      "Bash(timeout 10 bun run dev:*)",
+      "Bash(bunx vite:*)",
+      "Bash(pkill:*)",
+      "Bash(bun:*)",
+      "Bash(npx vite --version)",
+      "Bash(npx vite:*)"
     ],
     "deny": [],
     "ask": []

@@ -70,8 +70,9 @@ export function computeTaskDates(tasks: Task[], fallbackStart: ISODate): Compute
 
                 // Apply offset if specified
                 let finalDate = anchorDate;
-                if (dep.offset) {
-                    const offsetResult = addDuration(anchorDate, dep.offset);
+                if (dep.offset && dep.operator) {
+                    const subtract = dep.operator === "-";
+                    const offsetResult = addDuration(anchorDate, dep.offset, subtract);
                     // If offset is invalid, skip it
                     if (offsetResult) {
                         finalDate = offsetResult;

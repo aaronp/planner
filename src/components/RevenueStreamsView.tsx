@@ -418,20 +418,17 @@ function WarningStrip({ warnings }: { warnings: Warning[] }) {
 function StreamEditor({
     stream,
     onUpdate,
-    markets,
     timeline,
     streamColor,
     onColorChange,
 }: {
     stream: RevenueStream;
     onUpdate: (s: RevenueStream) => void;
-    markets: Market[];
     timeline: TimelineEvent[];
     streamColor: string;
     onColorChange: (color: string) => void;
 }) {
     const warnings = useMemo(() => computeWarnings(stream), [stream]);
-    const selectedMarket = markets.find((m) => m.id === stream.marketId);
 
     return (
         <Card className="rounded-2xl shadow-sm">
@@ -469,10 +466,9 @@ function StreamEditor({
                 <WarningStrip warnings={warnings} />
 
                 <Tabs defaultValue="overview" className="w-full">
-                    <TabsList className="grid w-full grid-cols-6 rounded-2xl">
+                    <TabsList className="grid w-full grid-cols-5 rounded-2xl">
                         <TabsTrigger value="overview">Overview</TabsTrigger>
                         <TabsTrigger value="assumptions">Assumptions & Risks</TabsTrigger>
-                        <TabsTrigger value="market">Market</TabsTrigger>
                         <TabsTrigger value="pricing">Pricing</TabsTrigger>
                         <TabsTrigger value="growth">Growth</TabsTrigger>
                         <TabsTrigger value="costs">Costs</TabsTrigger>
@@ -556,6 +552,78 @@ function StreamEditor({
                                 />
                             </div>
                         </div>
+
+                        <Separator className="my-5" />
+
+                        {/* Market Sizing Section */}
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <HelpLabel
+                                    label="Market Sizing (Optional)"
+                                    help="Estimate the Total Addressable Market (TAM), Serviceable Available Market (SAM), and Serviceable Obtainable Market (SOM) in units for this stream."
+                                />
+                                <Switch
+                                    checked={Boolean(stream.marketSizing)}
+                                    onCheckedChange={(checked) => {
+                                        if (checked) {
+                                            onUpdate({
+                                                ...stream,
+                                                marketSizing: {
+                                                    tam: { type: "triangular", min: 0, mode: 0, max: 0 },
+                                                    sam: { type: "triangular", min: 0, mode: 0, max: 0 },
+                                                    som: { type: "triangular", min: 0, mode: 0, max: 0 },
+                                                },
+                                            });
+                                        } else {
+                                            const { marketSizing, ...rest } = stream;
+                                            onUpdate(rest);
+                                        }
+                                    }}
+                                />
+                            </div>
+
+                            {stream.marketSizing && (
+                                <div className="grid gap-4 md:grid-cols-3 p-4 border rounded-2xl bg-muted/30">
+                                    <DistInput
+                                        label="TAM (Total Addressable)"
+                                        help="Total market size in units if you captured 100% of the market"
+                                        value={stream.marketSizing.tam ?? { type: "triangular", min: 0, mode: 0, max: 0 }}
+                                        hint="Total market size in units"
+                                        onChange={(tam) =>
+                                            onUpdate({
+                                                ...stream,
+                                                marketSizing: { ...stream.marketSizing!, tam },
+                                            })
+                                        }
+                                    />
+                                    <DistInput
+                                        label="SAM (Serviceable Available)"
+                                        help="Portion of TAM you can realistically serve based on your product/business model"
+                                        value={stream.marketSizing.sam ?? { type: "triangular", min: 0, mode: 0, max: 0 }}
+                                        hint="Units you can serve"
+                                        onChange={(sam) =>
+                                            onUpdate({
+                                                ...stream,
+                                                marketSizing: { ...stream.marketSizing!, sam },
+                                            })
+                                        }
+                                    />
+                                    <DistInput
+                                        label="SOM (Serviceable Obtainable)"
+                                        help="Realistic market share you can capture (usually matches your Max Units in Growth tab)"
+                                        value={stream.marketSizing.som ?? { type: "triangular", min: 0, mode: 0, max: 0 }}
+                                        hint="Units you can capture"
+                                        onChange={(som) =>
+                                            onUpdate({
+                                                ...stream,
+                                                marketSizing: { ...stream.marketSizing!, som },
+                                            })
+                                        }
+                                    />
+                                </div>
+                            )}
+                        </div>
+
                         <Separator className="my-5" />
                         <div className="text-sm text-muted-foreground">
                             Tip: keep your <span className="font-medium">Revenue unit</span> consistent with CAC and
@@ -750,117 +818,7 @@ function StreamEditor({
                         </Tabs>
                     </TabsContent>
 
-                    {/* Tab 3: Market */}
-                    <TabsContent value="market" className="mt-4">
-                        <div className="grid gap-4 md:grid-cols-3">
-                            <div className="space-y-2">
-                                <HelpLabel
-                                    label="Linked Market"
-                                    help="Select which market this revenue stream targets. Markets define the addressable customer base in units."
-                                />
-                                <Select
-                                    value={stream.marketId}
-                                    onValueChange={(value) => onUpdate({ ...stream, marketId: value })}
-                                >
-                                    <SelectTrigger className="rounded-2xl">
-                                        <SelectValue placeholder="Select market" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {markets.length === 0 ? (
-                                            <div className="p-2 text-sm text-muted-foreground">No markets defined</div>
-                                        ) : (
-                                            markets.map((m) => (
-                                                <SelectItem key={m.id} value={m.id}>
-                                                    {m.name}
-                                                </SelectItem>
-                                            ))
-                                        )}
-                                    </SelectContent>
-                                </Select>
-                                {selectedMarket && (
-                                    <div className="text-xs text-muted-foreground mt-1">
-                                        SAM: {selectedMarket.samUnits.toLocaleString()} units
-                                    </div>
-                                )}
-                            </div>
-                            <div className="space-y-2">
-                                <HelpLabel
-                                    label="Initial units"
-                                    help="How many paying units/customers exist at the start of this revenue stream. Often 0 for a new product; non-zero for migrations or existing contracts."
-                                />
-                                <Input
-                                    inputMode="numeric"
-                                    value={String(stream.adoptionModel.initialUnits)}
-                                    onChange={(e) => {
-                                        const x = Number(e.target.value);
-                                        if (Number.isFinite(x))
-                                            onUpdate({
-                                                ...stream,
-                                                adoptionModel: {
-                                                    ...stream.adoptionModel,
-                                                    initialUnits: clamp(Math.round(x), 0, 10_000_000),
-                                                },
-                                            });
-                                    }}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <HelpLabel
-                                    label="SOM cap (max units)"
-                                    help="Serviceable Obtainable Market: the maximum number of units you realistically expect to capture for this stream. Used to cap adoption growth."
-                                />
-                                <Input
-                                    inputMode="numeric"
-                                    value={String(stream.adoptionModel.maxUnits ?? "")}
-                                    onChange={(e) => {
-                                        const x = Number(e.target.value);
-                                        if (!e.target.value) {
-                                            const { maxUnits, ...rest } = stream.adoptionModel;
-                                            onUpdate({ ...stream, adoptionModel: rest });
-                                            return;
-                                        }
-                                        if (Number.isFinite(x))
-                                            onUpdate({
-                                                ...stream,
-                                                adoptionModel: {
-                                                    ...stream.adoptionModel,
-                                                    maxUnits: clamp(Math.round(x), 0, 10_000_000_000),
-                                                },
-                                            });
-                                    }}
-                                />
-                                <div className="text-xs text-muted-foreground">Optional; used to cap adoption.</div>
-                            </div>
-                        </div>
-                        <div className="mt-4 space-y-2">
-                            <HelpLabel
-                                label="Billing frequency"
-                                help="How often you bill. This affects how revenue is recognised in projections."
-                            />
-                            <Select
-                                value={stream.unitEconomics.billingFrequency}
-                                onValueChange={(v) =>
-                                    onUpdate({
-                                        ...stream,
-                                        unitEconomics: {
-                                            ...stream.unitEconomics,
-                                            billingFrequency: v as "monthly" | "annual",
-                                        },
-                                    })
-                                }
-                            >
-                                <SelectTrigger className="rounded-2xl">
-                                    <SelectValue placeholder="Select" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="monthly">Monthly</SelectItem>
-                                    <SelectItem value="annual">Annual</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </TabsContent>
-
-                    {/* Tab 4: Pricing */}
+                    {/* Tab 3: Pricing */}
                     <TabsContent value="pricing" className="mt-4">
                         <div className="grid gap-6 md:grid-cols-2">
                             <DistInput
@@ -1030,12 +988,88 @@ function StreamEditor({
                                     ) : null}
                                 </AnimatePresence>
                             </div>
+
+                            <div className="space-y-2 md:col-span-2">
+                                <HelpLabel
+                                    label="Billing frequency"
+                                    help="How often you bill. This affects how revenue is recognised in projections."
+                                />
+                                <Select
+                                    value={stream.unitEconomics.billingFrequency}
+                                    onValueChange={(v) =>
+                                        onUpdate({
+                                            ...stream,
+                                            unitEconomics: {
+                                                ...stream.unitEconomics,
+                                                billingFrequency: v as "monthly" | "annual",
+                                            },
+                                        })
+                                    }
+                                >
+                                    <SelectTrigger className="rounded-2xl">
+                                        <SelectValue placeholder="Select" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="monthly">Monthly</SelectItem>
+                                        <SelectItem value="annual">Annual</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                     </TabsContent>
 
-                    {/* Tab 5: Growth */}
+                    {/* Tab 4: Growth */}
                     <TabsContent value="growth" className="mt-4">
                         <div className="grid gap-6 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <HelpLabel
+                                    label="Initial units"
+                                    help="How many paying units/customers exist at the start of this revenue stream. Often 0 for a new product; non-zero for migrations or existing contracts."
+                                />
+                                <Input
+                                    inputMode="numeric"
+                                    value={String(stream.adoptionModel.initialUnits)}
+                                    onChange={(e) => {
+                                        const x = Number(e.target.value);
+                                        if (Number.isFinite(x))
+                                            onUpdate({
+                                                ...stream,
+                                                adoptionModel: {
+                                                    ...stream.adoptionModel,
+                                                    initialUnits: clamp(Math.round(x), 0, 10_000_000),
+                                                },
+                                            });
+                                    }}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <HelpLabel
+                                    label="Max units (SOM cap)"
+                                    help="Maximum number of units you expect to capture for this stream. Used to cap adoption growth. Typically aligns with your SOM estimate in the Overview tab."
+                                />
+                                <Input
+                                    inputMode="numeric"
+                                    value={String(stream.adoptionModel.maxUnits ?? "")}
+                                    onChange={(e) => {
+                                        const x = Number(e.target.value);
+                                        if (!e.target.value) {
+                                            const { maxUnits, ...rest } = stream.adoptionModel;
+                                            onUpdate({ ...stream, adoptionModel: rest });
+                                            return;
+                                        }
+                                        if (Number.isFinite(x))
+                                            onUpdate({
+                                                ...stream,
+                                                adoptionModel: {
+                                                    ...stream.adoptionModel,
+                                                    maxUnits: clamp(Math.round(x), 0, 10_000_000_000),
+                                                },
+                                            });
+                                    }}
+                                />
+                                <div className="text-xs text-muted-foreground">Optional; used to cap adoption.</div>
+                            </div>
+
                             <DistInput
                                 label="Monthly acquisition"
                                 help="How many new revenue units you add per month after the start month. Use Advanced for min/likely/max."
@@ -1209,7 +1243,7 @@ function StreamEditor({
 
 export function RevenueStreamsView({
     revenueStreams,
-    markets,
+    markets: _markets,
     timeline,
     onChange,
     onChangeTimeline,
@@ -1261,7 +1295,6 @@ export function RevenueStreamsView({
         const newStream: RevenueStream = {
             id: uid("RS"),
             name: "New Revenue Stream",
-            marketId: markets[0]?.id ?? "",
             pricingModel: "subscription",
             revenueUnit: "subscriber",
             unlockEventId: timeline[0]?.id,
@@ -1470,7 +1503,6 @@ export function RevenueStreamsView({
                             {selectedStream ? (
                                 <StreamEditor
                                     stream={selectedStream}
-                                    markets={markets}
                                     timeline={timeline}
                                     streamColor={streamColors.get(selectedStream.id) || "#4f46e5"}
                                     onColorChange={(color) =>

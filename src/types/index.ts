@@ -71,14 +71,21 @@ export type AcquisitionCosts = {
     onboardingCostPerUnit?: Distribution; // One-off implementation / setup cost incurred after acquisition
 };
 
+export type MarketSizing = {
+    tam?: Distribution; // Total Addressable Market in units
+    sam?: Distribution; // Serviceable Addressable Market in units
+    som?: Distribution; // Serviceable Obtainable Market in units
+};
+
 export type RevenueStream = {
     id: string;
     name: string;
-    marketId: string; // Links to Market
+    marketId?: string; // Optional - for backward compatibility
     pricingModel: PricingModel;
     revenueUnit: string; // e.g., "subscriber", "transaction", "license"
     unlockEventId?: string; // Timeline event that unlocks this stream
     duration?: string; // e.g., "12m", "24m" - empty/undefined means infinite (runs to horizon)
+    marketSizing?: MarketSizing; // TAM/SAM/SOM for this stream
     unitEconomics: UnitEconomics;
     adoptionModel: AdoptionModel;
     acquisitionCosts: AcquisitionCosts;

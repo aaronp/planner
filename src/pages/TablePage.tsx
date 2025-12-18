@@ -140,8 +140,9 @@ export function TablePage({ data, month }: TablePageProps) {
                                         <div className="text-xs font-normal text-muted-foreground mt-1">Fixed Cost</div>
                                     </th>
                                 ))}
+                                <th className="text-right p-2 font-medium text-muted-foreground border-l">Total Revenue</th>
                                 <th className="text-right p-2 font-medium text-muted-foreground border-l">Total Costs</th>
-                                <th className="text-right p-2 font-medium text-muted-foreground border-l">Total Margin</th>
+                                <th className="text-right p-2 font-medium text-muted-foreground border-l">Margin</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -416,6 +417,16 @@ export function TablePage({ data, month }: TablePageProps) {
                                                     </td>
                                                 );
                                             })}
+                                            <td
+                                                className="text-right p-2 border-l font-medium"
+                                                style={{
+                                                    backgroundColor: "hsl(142, 70%, 97%)",
+                                                }}
+                                            >
+                                                <div className="text-xs">
+                                                    {fmtCurrency(row.revenue, currency)}
+                                                </div>
+                                            </td>
                                             <td
                                                 className="text-right p-0 border-l cursor-pointer font-medium"
                                                 style={{

@@ -6,6 +6,7 @@ import type { VentureData, ComputedTask } from "../types";
 import { monthIndexFromStart, addMonths, formatMonthLabel, isWithin } from "../utils/dateUtils";
 import { fmtCurrency, fmtCompact, clamp01 } from "../utils/formatUtils";
 import { computeSeries, segmentActiveUnitsAtMonth, computeTaskDates } from "../utils/modelEngine";
+import { calcBarHeight } from "../utils/chartScaling";
 
 // Map currency codes to symbols
 function getCurrencySymbol(currency: string): string {
@@ -95,17 +96,6 @@ export function TimelineView({
         }
     }, [data.revenueStreams, storageVersion]);
 
-    // Calculate global max for bar chart scaling (prevent jumping)
-    const globalMax = useMemo(() => {
-        let maxRevenue = 0;
-        let maxCosts = 0;
-        for (const row of series) {
-            if (row.revenue > maxRevenue) maxRevenue = row.revenue;
-            if (row.costs > maxCosts) maxCosts = row.costs;
-        }
-        return Math.max(maxRevenue, maxCosts, 1); // Avoid division by zero
-    }, [series]);
-
     // Compute task dates
     const computedTasks = useMemo(() => computeTaskDates(data.tasks, start), [data.tasks, start]);
 
@@ -148,20 +138,6 @@ export function TimelineView({
         return total;
     };
 
-    // Find max cost across all tasks and months for proportional sizing
-    const maxMonthlyCost = useMemo(() => {
-        let max = 0;
-        for (const t of computedTasks) {
-            for (let m = 0; m < horizonMonths; m++) {
-                const monthDate = addMonths(start, m);
-                const active = isWithin(monthDate, t.computedStart, t.computedEnd);
-                const oneOff = monthIndexFromStart(start, t.computedStart) === m ? t.costOneOff : 0;
-                const cost = (active ? t.costMonthly : 0) + oneOff;
-                if (cost > max) max = cost;
-            }
-        }
-        return max || 1; // Avoid division by zero
-    }, [computedTasks, horizonMonths, start]);
 
     const segRevenueAtCursor = (s: any) => segmentActiveUnitsAtMonth(s, start, month) * s.pricePerUnit;
 
@@ -231,18 +207,49 @@ export function TimelineView({
         return total;
     };
 
-    // Find max revenue across all streams and months for proportional sizing
+    // Find max TOTAL revenue per month (sum all streams per month, then find max month)
     const maxMonthlyRevenue = useMemo(() => {
         if (!data.revenueStreams || data.revenueStreams.length === 0) return 1;
         let max = 0;
-        for (const stream of data.revenueStreams) {
-            for (let m = 0; m < horizonMonths; m++) {
-                const revenue = streamRevenueAtMonth(stream, m);
-                if (revenue > max) max = revenue;
+        for (let m = 0; m < horizonMonths; m++) {
+            let totalRevenue = 0;
+            for (const stream of data.revenueStreams) {
+                totalRevenue += streamRevenueAtMonth(stream, m);
             }
+            if (totalRevenue > max) max = totalRevenue;
         }
         return max || 1;
     }, [data.revenueStreams, horizonMonths]);
+
+    // Find max TOTAL cost per month (sum all tasks/fixed costs per month, then find max month)
+    const maxMonthlyCost = useMemo(() => {
+        let max = 0;
+        for (let m = 0; m < horizonMonths; m++) {
+            let totalCost = 0;
+            // Sum task costs
+            for (const t of computedTasks) {
+                const monthDate = addMonths(start, m);
+                const active = isWithin(monthDate, t.computedStart, t.computedEnd);
+                const oneOff = monthIndexFromStart(start, t.computedStart) === m ? t.costOneOff : 0;
+                totalCost += (active ? t.costMonthly : 0) + oneOff;
+            }
+            // Sum fixed costs
+            if (data.costModel?.fixedMonthlyCosts) {
+                for (const fc of data.costModel.fixedMonthlyCosts) {
+                    const mode = fc.monthlyCost.mode ?? (fc.monthlyCost.min + fc.monthlyCost.max) / 2;
+                    totalCost += mode;
+                }
+            }
+            if (totalCost > max) max = totalCost;
+        }
+        return max || 1;
+    }, [computedTasks, horizonMonths, start, data.costModel?.fixedMonthlyCosts]);
+
+    // Unified max for both revenue and costs (for proportional bar chart scaling)
+    // This is the "biggest value" across all months
+    const unifiedMax = useMemo(() => {
+        return Math.max(maxMonthlyRevenue, maxMonthlyCost);
+    }, [maxMonthlyRevenue, maxMonthlyCost]);
 
     // Calculate revenue breakdown by stream for current month
     const revenueBreakdown = useMemo(() => {
@@ -292,7 +299,7 @@ export function TimelineView({
                                     {revenueBreakdown.length > 0 ? (
                                         <>
                                             {revenueBreakdown.map((item) => {
-                                                const widthPct = (item.revenue / globalMax) * 100;
+                                                const widthPct = calcBarHeight(item.revenue, unifiedMax);
                                                 return (
                                                     <div
                                                         key={item.stream.id}
@@ -307,7 +314,7 @@ export function TimelineView({
                                                     </div>
                                                 );
                                             })}
-                                            {snap.revenue < globalMax && (
+                                            {snap.revenue < unifiedMax && (
                                                 <div className="flex-1 bg-muted/30" />
                                             )}
                                         </>
@@ -326,7 +333,7 @@ export function TimelineView({
                                     {costBreakdown.length > 0 ? (
                                         <>
                                             {costBreakdown.map((item) => {
-                                                const widthPct = (item.cost / globalMax) * 100;
+                                                const widthPct = calcBarHeight(item.cost, unifiedMax);
                                                 return (
                                                     <div
                                                         key={item.task.id}
@@ -341,7 +348,7 @@ export function TimelineView({
                                                     </div>
                                                 );
                                             })}
-                                            {snap.costs < globalMax && (
+                                            {snap.costs < unifiedMax && (
                                                 <div className="flex-1 bg-muted/30" />
                                             )}
                                         </>
@@ -438,7 +445,7 @@ export function TimelineView({
                                                     const inside = m >= s && m <= e;
                                                     const isCursor = m === month;
                                                     const monthlyCost = taskCostAtMonth(t, m);
-                                                    const costPct = maxMonthlyCost > 0 ? (monthlyCost / maxMonthlyCost) * 100 : 0;
+                                                    const costPct = calcBarHeight(monthlyCost, unifiedMax);
                                                     const hasContent = inside && monthlyCost > 0;
 
                                                     return (
@@ -529,7 +536,7 @@ export function TimelineView({
                                                     const inside = m >= startMonth && m <= endMonth;
                                                     const isCursor = m === month;
                                                     const monthlyRevenue = streamRevenueAtMonth(stream, m);
-                                                    const revenuePct = maxMonthlyRevenue > 0 ? (monthlyRevenue / maxMonthlyRevenue) * 100 : 0;
+                                                    const revenuePct = calcBarHeight(monthlyRevenue, unifiedMax);
                                                     const hasRevenue = inside && monthlyRevenue > 0;
                                                     const streamColor = streamColors.get(stream.id) || "#4f46e5";
 
