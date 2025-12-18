@@ -5,8 +5,9 @@ import { Separator } from "@/components/ui/separator";
 import type { VentureData, ComputedTask } from "../types";
 import { monthIndexFromStart, addMonths, formatMonthLabel, isWithin } from "../utils/dateUtils";
 import { fmtCurrency, fmtCompact, clamp01 } from "../utils/formatUtils";
-import { computeSeries, segmentActiveUnitsAtMonth, computeTaskDates } from "../utils/modelEngine";
+import { computeSeries, computeTaskDates } from "../utils/modelEngine";
 import { calcBarHeight } from "../utils/chartScaling";
+import { streamAcquisitionCostsAtMonth } from "../utils/logic";
 
 // Map currency codes to symbols
 function getCurrencySymbol(currency: string): string {
@@ -138,9 +139,6 @@ export function TimelineView({
         return total;
     };
 
-
-    const segRevenueAtCursor = (s: any) => segmentActiveUnitsAtMonth(s, start, month) * s.pricePerUnit;
-
     // Calculate active units for a revenue stream at a specific month
     const streamUnitsAtMonth = (stream: any, m: number) => {
         // Check if stream has started (unlockEventId)
@@ -190,12 +188,16 @@ export function TimelineView({
         return Math.max(0, units);
     };
 
-    // Calculate revenue for a revenue stream at a specific month
+    // Calculate net revenue for a revenue stream at a specific month (revenue minus acquisition costs)
     const streamRevenueAtMonth = (stream: any, m: number) => {
         const units = streamUnitsAtMonth(stream, m);
         const priceMode = stream.unitEconomics.pricePerUnit?.mode ??
                          ((stream.unitEconomics.pricePerUnit?.min + stream.unitEconomics.pricePerUnit?.max) / 2) ?? 0;
-        return units * priceMode;
+        const grossRevenue = units * priceMode;
+
+        // Subtract acquisition costs to get net revenue (matching the table view)
+        const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline);
+        return grossRevenue - acquisitionCosts.total;
     };
 
     // Calculate cumulative revenue to date for a revenue stream
@@ -259,8 +261,9 @@ export function TimelineView({
                 stream,
                 revenue: streamRevenueAtMonth(stream, month),
                 color: streamColors.get(stream.id) || "#4f46e5",
+                isNegative: streamRevenueAtMonth(stream, month) < 0,
             }))
-            .filter((item) => item.revenue > 0)
+            .filter((item) => item.revenue !== 0)
             .sort((a, b) => b.revenue - a.revenue);
     }, [data.revenueStreams, month, streamColors]);
 
@@ -292,21 +295,22 @@ export function TimelineView({
                     {/* Snapshot - Stacked Bar Charts */}
                     <div className="grid grid-cols-[1fr_auto] gap-4 pt-2 border-t">
                         <div className="space-y-3">
-                            {/* Revenue Bar */}
+                            {/* Net Revenue Bar */}
                             <div>
-                                <div className="text-xs text-muted-foreground mb-1.5">Revenue</div>
+                                <div className="text-xs text-muted-foreground mb-1.5">Net Revenue</div>
                                 <div className="flex h-8 rounded overflow-hidden border">
                                     {revenueBreakdown.length > 0 ? (
                                         <>
                                             {revenueBreakdown.map((item) => {
-                                                const widthPct = calcBarHeight(item.revenue, unifiedMax);
+                                                const widthPct = calcBarHeight(Math.abs(item.revenue), unifiedMax);
+                                                const barColor = item.isNegative ? "#dc2626" : item.color;
                                                 return (
                                                     <div
                                                         key={item.stream.id}
                                                         className="flex items-center justify-center text-[10px] font-medium text-white"
                                                         style={{
                                                             width: `${widthPct}%`,
-                                                            backgroundColor: item.color,
+                                                            backgroundColor: barColor,
                                                         }}
                                                         title={`${item.stream.name}: ${fmtCurrency(item.revenue, currency)}`}
                                                     >
@@ -361,14 +365,14 @@ export function TimelineView({
                             </div>
                         </div>
 
-                        {/* Gross Margin */}
+                        {/* Margin & Balance */}
                         <div className="flex flex-col justify-center px-4 border-l space-y-2">
                             <div>
-                                <div className="text-xs text-muted-foreground">Gross Margin (at month)</div>
+                                <div className="text-xs text-muted-foreground">Margin (this month)</div>
                                 <div className="text-lg font-bold">{fmtCurrency(snap.profit, currency)}</div>
                             </div>
                             <div>
-                                <div className="text-xs text-muted-foreground">Gross Margin (to date)</div>
+                                <div className="text-xs text-muted-foreground">Balance (cumulative)</div>
                                 <div className="text-lg font-semibold">
                                     {fmtCurrency(snap.cash ?? 0, currency)}
                                 </div>
@@ -536,9 +540,11 @@ export function TimelineView({
                                                     const inside = m >= startMonth && m <= endMonth;
                                                     const isCursor = m === month;
                                                     const monthlyRevenue = streamRevenueAtMonth(stream, m);
-                                                    const revenuePct = calcBarHeight(monthlyRevenue, unifiedMax);
-                                                    const hasRevenue = inside && monthlyRevenue > 0;
+                                                    const isNegative = monthlyRevenue < 0;
+                                                    const revenuePct = calcBarHeight(Math.abs(monthlyRevenue), unifiedMax);
+                                                    const hasRevenue = inside && monthlyRevenue !== 0;
                                                     const streamColor = streamColors.get(stream.id) || "#4f46e5";
+                                                    const barColor = isNegative ? "#dc2626" : streamColor;
 
                                                     return (
                                                         <div key={m} className={`border-b ${isCursor ? "bg-muted/60" : ""} relative`}>
@@ -548,9 +554,9 @@ export function TimelineView({
                                                                         className="rounded-lg relative flex items-end justify-center"
                                                                         style={{
                                                                             height: `${Math.max(20, revenuePct)}%`,
-                                                                            backgroundColor: `${streamColor}40`,
+                                                                            backgroundColor: `${barColor}40`,
                                                                         }}
-                                                                        title={`${stream.name}\nRevenue: ${fmtCurrency(monthlyRevenue, currency)}\nUnits: ${fmtCompact(streamUnitsAtMonth(stream, m))}`}
+                                                                        title={`${stream.name}\nNet Revenue: ${fmtCurrency(monthlyRevenue, currency)}\nUnits: ${fmtCompact(streamUnitsAtMonth(stream, m))}`}
                                                                     >
                                                                         <div
                                                                             className="text-[10px] font-medium"
@@ -558,7 +564,7 @@ export function TimelineView({
                                                                                 writingMode: "vertical-rl",
                                                                                 transform: "rotate(180deg)",
                                                                                 paddingLeft: "6px",
-                                                                                color: streamColor,
+                                                                                color: barColor,
                                                                             }}
                                                                         >
                                                                             {getCurrencySymbol(currency)}{fmtCompact(monthlyRevenue)}
@@ -571,7 +577,7 @@ export function TimelineView({
                                                 })}
 
                                                 <div className="sticky right-0 bg-background z-10 p-2 border-b text-right">
-                                                    <div className="text-xs text-muted-foreground">Revenue to Date</div>
+                                                    <div className="text-xs text-muted-foreground">Net Revenue to Date</div>
                                                     <div className="text-sm font-medium">{fmtCurrency(revenueToDate, currency)}</div>
                                                     <div className="text-xs text-muted-foreground mt-1">Units {fmtCompact(unitsNow)}</div>
                                                 </div>

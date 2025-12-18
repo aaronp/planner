@@ -172,7 +172,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                             borderLeftWidth: "3px",
                                         }}
                                     >
-                                        <div className="text-xs">Total Margin</div>
+                                        <div className="text-xs">Net Revenue</div>
                                     </th>
                                 )}
                                 {!costsCollapsed && computedTasks.map((task) => (
@@ -217,8 +217,8 @@ export function TablePage({ data, month }: TablePageProps) {
                                 )}
                                 {!totalsCollapsed && (
                                     <>
-                                        <th className="text-right p-2 font-medium text-muted-foreground border-l">Net Revenue</th>
-                                        <th className="text-right p-2 font-medium text-muted-foreground border-l">Total Costs</th>
+                                        {!revenueCollapsed && <th className="text-right p-2 font-medium text-muted-foreground border-l">Net Revenue</th>}
+                                        {!costsCollapsed && <th className="text-right p-2 font-medium text-muted-foreground border-l">Total Costs</th>}
                                         <th className="text-right p-2 font-medium text-muted-foreground border-l">Margin</th>
                                         <th className="text-right p-2 font-medium text-muted-foreground border-l">Cumulative Profit</th>
                                         <th className="text-right p-2 font-medium text-muted-foreground border-l">Balance</th>
@@ -490,17 +490,20 @@ export function TablePage({ data, month }: TablePageProps) {
                                             )}
                                             {!totalsCollapsed && (
                                                 <>
-                                                    <td
-                                                        className="text-right p-2 border-l font-medium"
-                                                        style={{
-                                                            backgroundColor: "hsl(142, 70%, 97%)",
-                                                        }}
-                                                    >
-                                                        <div className="text-xs">
-                                                            {fmtCurrency(row.revenue, currency)}
-                                                        </div>
-                                                    </td>
-                                                    <td
+                                                    {!revenueCollapsed && (
+                                                        <td
+                                                            className="text-right p-2 border-l font-medium"
+                                                            style={{
+                                                                backgroundColor: "hsl(142, 70%, 97%)",
+                                                            }}
+                                                        >
+                                                            <div className="text-xs">
+                                                                {fmtCurrency(row.revenue, currency)}
+                                                            </div>
+                                                        </td>
+                                                    )}
+                                                    {!costsCollapsed && (
+                                                        <td
                                                 className="text-right p-0 border-l cursor-pointer font-medium"
                                                 style={{
                                                     backgroundColor: "hsl(0, 0%, 98%)",
@@ -564,6 +567,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                     }
                                                 })()}
                                             </td>
+                                                    )}
                                             <td
                                                 className="text-right p-0 border-l cursor-pointer font-medium"
                                                 style={{
