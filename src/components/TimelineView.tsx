@@ -122,17 +122,19 @@ export function TimelineView({
     };
 
     const taskCostAtCursor = (t: ComputedTask) => {
+        const taskMultiplier = multipliers.tasks[t.id] ?? 1;
         const active = isWithin(monthISO, t.computedStart, t.computedEnd);
         const oneOff = monthIndexFromStart(start, t.computedStart) === month ? t.costOneOff : 0;
-        return (active ? t.costMonthly : 0) + oneOff;
+        return ((active ? t.costMonthly : 0) + oneOff) * taskMultiplier;
     };
 
     // Calculate cost for a specific task at a specific month index
     const taskCostAtMonth = (t: ComputedTask, m: number) => {
+        const taskMultiplier = multipliers.tasks[t.id] ?? 1;
         const monthDate = addMonths(start, m);
         const active = isWithin(monthDate, t.computedStart, t.computedEnd);
         const oneOff = monthIndexFromStart(start, t.computedStart) === m ? t.costOneOff : 0;
-        return (active ? t.costMonthly : 0) + oneOff;
+        return ((active ? t.costMonthly : 0) + oneOff) * taskMultiplier;
     };
 
     // Calculate cumulative costs to date for a task
@@ -175,31 +177,31 @@ export function TimelineView({
             if (totalRevenue > max) max = totalRevenue;
         }
         return max || 1;
-    }, [data.revenueStreams, horizonMonths]);
+    }, [data.revenueStreams, horizonMonths, multipliers.revenueStreams, streamDistributions]);
 
     // Find max TOTAL cost per month (sum all tasks/fixed costs per month, then find max month)
     const maxMonthlyCost = useMemo(() => {
         let max = 0;
         for (let m = 0; m < horizonMonths; m++) {
             let totalCost = 0;
-            // Sum task costs
+            // Sum task costs with multipliers
             for (const t of computedTasks) {
-                const monthDate = addMonths(start, m);
-                const active = isWithin(monthDate, t.computedStart, t.computedEnd);
-                const oneOff = monthIndexFromStart(start, t.computedStart) === m ? t.costOneOff : 0;
-                totalCost += (active ? t.costMonthly : 0) + oneOff;
+                totalCost += taskCostAtMonth(t, m);
             }
-            // Sum fixed costs
+            // Sum fixed costs with multipliers
             if (data.costModel?.fixedMonthlyCosts) {
                 for (const fc of data.costModel.fixedMonthlyCosts) {
-                    const mode = fc.monthlyCost.mode ?? (fc.monthlyCost.min + fc.monthlyCost.max) / 2;
-                    totalCost += mode;
+                    const fcMultiplier = multipliers.fixedCosts[fc.id] ?? 1;
+                    const costValue = typeof fc.monthlyCost === 'number'
+                        ? fc.monthlyCost
+                        : (fc.monthlyCost?.mode ?? fc.monthlyCost?.min ?? 0);
+                    totalCost += costValue * fcMultiplier;
                 }
             }
             if (totalCost > max) max = totalCost;
         }
         return max || 1;
-    }, [computedTasks, horizonMonths, start, data.costModel?.fixedMonthlyCosts]);
+    }, [computedTasks, horizonMonths, start, data.costModel?.fixedMonthlyCosts, multipliers.tasks, multipliers.fixedCosts]);
 
     // Unified max for both revenue and costs (for proportional bar chart scaling)
     // This is the "biggest value" across all months
@@ -219,7 +221,7 @@ export function TimelineView({
             }))
             .filter((item) => item.revenue !== 0)
             .sort((a, b) => b.revenue - a.revenue);
-    }, [data.revenueStreams, month, streamColors]);
+    }, [data.revenueStreams, month, streamColors, multipliers.revenueStreams, streamDistributions]);
 
     // Calculate cost breakdown by task for current month
     const costBreakdown = useMemo(() => {
@@ -232,7 +234,7 @@ export function TimelineView({
             }))
             .filter((item) => item.cost > 0)
             .sort((a, b) => b.cost - a.cost);
-    }, [computedTasks, month]);
+    }, [computedTasks, month, multipliers.tasks]);
 
     return (
         <Card className="rounded-2xl shadow-sm">

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, FileDown } from "lucide-react";
 import {
     Select,
     SelectContent,
@@ -23,6 +23,7 @@ import { computeSeries } from "./utils/modelEngine";
 import { formatMonthLabel } from "./utils/dateUtils";
 import { RiskProvider, useRisk } from "./contexts/RiskContext";
 import { RiskScaleComponent } from "./components/RiskScaleComponent";
+import { generatePDF } from "./utils/pdfExport";
 
 // Route Pages
 import { TimelinePage } from "./pages/TimelinePage";
@@ -70,6 +71,7 @@ function AppContent() {
 
     const [month, setMonth] = useState(0);
     const [detailsExpanded, setDetailsExpanded] = useState(false);
+    const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -95,6 +97,18 @@ function AppContent() {
     const setFixedCosts = (fixedMonthlyCosts: FixedCost[]) =>
         setData((prev) => ({ ...prev, costModel: { ...prev.costModel, fixedMonthlyCosts } }));
 
+    const handleDownloadPDF = async () => {
+        setIsGeneratingPDF(true);
+        try {
+            await generatePDF(data.meta.name);
+        } catch (error) {
+            console.error("Error generating PDF:", error);
+            alert("Failed to generate PDF. Please try again.");
+        } finally {
+            setIsGeneratingPDF(false);
+        }
+    };
+
     return (
         <BrowserRouter basename="/planner">
             <div className="p-4 md:p-6 max-w-[1400px] mx-auto">
@@ -105,24 +119,36 @@ function AppContent() {
                             <div className="flex items-center justify-between mb-3">
                                 {/* <div className="text-sm font-medium">Plan Details</div> */}
                                 <h1 className="text-2xl font-semibold">{data.meta.name}</h1>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setDetailsExpanded(!detailsExpanded)}
-                                    className="rounded-xl h-7"
-                                >
-                                    {detailsExpanded ? (
-                                        <>
-                                            <ChevronUp className="h-4 w-4 mr-1" />
-                                            Hide
-                                        </>
-                                    ) : (
-                                        <>
-                                            <ChevronDown className="h-4 w-4 mr-1" />
-                                            Show
-                                        </>
-                                    )}
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleDownloadPDF}
+                                        disabled={isGeneratingPDF}
+                                        className="rounded-xl h-7"
+                                    >
+                                        <FileDown className="h-4 w-4 mr-1" />
+                                        {isGeneratingPDF ? "Generating..." : "Download PDF"}
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setDetailsExpanded(!detailsExpanded)}
+                                        className="rounded-xl h-7"
+                                    >
+                                        {detailsExpanded ? (
+                                            <>
+                                                <ChevronUp className="h-4 w-4 mr-1" />
+                                                Hide
+                                            </>
+                                        ) : (
+                                            <>
+                                                <ChevronDown className="h-4 w-4 mr-1" />
+                                                Show
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
                             </div>
 
                             {detailsExpanded && (

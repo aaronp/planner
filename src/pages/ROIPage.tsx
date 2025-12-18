@@ -39,7 +39,14 @@ export function ROIPage({ data, month }: ROIPageProps) {
         setIsRunningSimulation(true);
         // Run in a timeout to allow UI to update
         setTimeout(() => {
-            const results = runMonteCarloSimulation(data, 100);
+            const results = runMonteCarloSimulation(
+                data,
+                100,
+                multipliers.tasks,
+                multipliers.fixedCosts,
+                multipliers.revenueStreams,
+                streamDistributions
+            );
             setMonteCarloResults(results);
             setIsRunningSimulation(false);
         }, 100);
@@ -551,9 +558,117 @@ export function ROIPage({ data, month }: ROIPageProps) {
                         </CardHeader>
                         {monteCarloResults && (
                             <CardContent className="space-y-6">
+                                {/* Key Milestones */}
+                                <div>
+                                    <Label className="text-muted-foreground text-xs mb-3 block">Key Milestones (Probability Distribution)</Label>
+                                    <div className="grid md:grid-cols-2 gap-4">
+                                        <Card className="rounded-2xl bg-blue-50/50">
+                                            <CardContent className="p-4">
+                                                <div className="text-sm font-medium mb-3">Operational Profitability</div>
+                                                <div className="text-xs text-muted-foreground mb-2">First month with positive profit</div>
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-xs text-muted-foreground">Bear (P10):</span>
+                                                        <span className="text-sm font-semibold">
+                                                            {monteCarloResults.metrics.profitableMonth[Math.floor(monteCarloResults.metrics.profitableMonth.length * 0.1)] !== undefined
+                                                                ? `Month ${monteCarloResults.metrics.profitableMonth[Math.floor(monteCarloResults.metrics.profitableMonth.length * 0.1)]}`
+                                                                : "Not reached"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-xs text-muted-foreground">Base (P50):</span>
+                                                        <span className="text-sm font-semibold">
+                                                            {monteCarloResults.metrics.profitableMonth[Math.floor(monteCarloResults.metrics.profitableMonth.length * 0.5)] !== undefined
+                                                                ? `Month ${monteCarloResults.metrics.profitableMonth[Math.floor(monteCarloResults.metrics.profitableMonth.length * 0.5)]}`
+                                                                : "Not reached"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-xs text-muted-foreground">Bull (P90):</span>
+                                                        <span className="text-sm font-semibold">
+                                                            {monteCarloResults.metrics.profitableMonth[Math.floor(monteCarloResults.metrics.profitableMonth.length * 0.9)] !== undefined
+                                                                ? `Month ${monteCarloResults.metrics.profitableMonth[Math.floor(monteCarloResults.metrics.profitableMonth.length * 0.9)]}`
+                                                                : "Not reached"}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card className="rounded-2xl bg-green-50/50">
+                                            <CardContent className="p-4">
+                                                <div className="text-sm font-medium mb-3">ROI Breakeven</div>
+                                                <div className="text-xs text-muted-foreground mb-2">First month cumulative profit ≥ 0</div>
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-xs text-muted-foreground">Bear (P10):</span>
+                                                        <span className="text-sm font-semibold">
+                                                            {monteCarloResults.metrics.roiBreakevenMonth[Math.floor(monteCarloResults.metrics.roiBreakevenMonth.length * 0.1)] !== undefined
+                                                                ? `Month ${monteCarloResults.metrics.roiBreakevenMonth[Math.floor(monteCarloResults.metrics.roiBreakevenMonth.length * 0.1)]}`
+                                                                : "Not reached"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-xs text-muted-foreground">Base (P50):</span>
+                                                        <span className="text-sm font-semibold">
+                                                            {monteCarloResults.metrics.roiBreakevenMonth[Math.floor(monteCarloResults.metrics.roiBreakevenMonth.length * 0.5)] !== undefined
+                                                                ? `Month ${monteCarloResults.metrics.roiBreakevenMonth[Math.floor(monteCarloResults.metrics.roiBreakevenMonth.length * 0.5)]}`
+                                                                : "Not reached"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-xs text-muted-foreground">Bull (P90):</span>
+                                                        <span className="text-sm font-semibold">
+                                                            {monteCarloResults.metrics.roiBreakevenMonth[Math.floor(monteCarloResults.metrics.roiBreakevenMonth.length * 0.9)] !== undefined
+                                                                ? `Month ${monteCarloResults.metrics.roiBreakevenMonth[Math.floor(monteCarloResults.metrics.roiBreakevenMonth.length * 0.9)]}`
+                                                                : "Not reached"}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                </div>
+
+                                {/* Yearly Profit Projections */}
+                                <div>
+                                    <Label className="text-muted-foreground text-xs mb-3 block">Net Profit by Year (Probability Distribution)</Label>
+                                    <Card className="rounded-2xl">
+                                        <CardContent className="p-4">
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-sm">
+                                                    <thead>
+                                                        <tr className="border-b">
+                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground">Year</th>
+                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground">Bear (P10)</th>
+                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground">Base (P50)</th>
+                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground">Bull (P90)</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {monteCarloResults.metrics.yearlyProfit.map((yearData) => {
+                                                            const p10 = yearData.profits[Math.floor(yearData.profits.length * 0.1)] ?? 0;
+                                                            const p50 = yearData.profits[Math.floor(yearData.profits.length * 0.5)] ?? 0;
+                                                            const p90 = yearData.profits[Math.floor(yearData.profits.length * 0.9)] ?? 0;
+                                                            return (
+                                                                <tr key={yearData.year} className="border-b">
+                                                                    <td className="py-2 px-2 font-medium">Year {yearData.year}</td>
+                                                                    <td className="py-2 px-2 text-right tabular-nums">{fmtCurrency(p10, currency)}</td>
+                                                                    <td className="py-2 px-2 text-right tabular-nums font-semibold">{fmtCurrency(p50, currency)}</td>
+                                                                    <td className="py-2 px-2 text-right tabular-nums">{fmtCurrency(p90, currency)}</td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                </div>
+
                                 {/* Scenario Comparison */}
                                 <div>
-                                    <Label className="text-muted-foreground text-xs mb-3 block">Scenario Outcomes</Label>
+                                    <Label className="text-muted-foreground text-xs mb-3 block">Scenario Outcomes (End of Horizon)</Label>
                                     <div className="grid md:grid-cols-3 gap-4">
                                         {monteCarloResults.scenarios.map((scenario) => (
                                             <Card key={scenario.label} className="rounded-2xl">
@@ -561,19 +676,19 @@ export function ROIPage({ data, month }: ROIPageProps) {
                                                     <div className="text-sm font-medium mb-3">{scenario.label}</div>
                                                     <div className="space-y-2">
                                                         <div>
-                                                            <div className="text-xs text-muted-foreground">Final Revenue</div>
+                                                            <div className="text-xs text-muted-foreground">Cumulative Revenue</div>
                                                             <div className="text-lg font-semibold">
                                                                 {fmtCurrency(scenario.cumRevenue, currency)}
                                                             </div>
                                                         </div>
                                                         <div>
-                                                            <div className="text-xs text-muted-foreground">Final Costs</div>
+                                                            <div className="text-xs text-muted-foreground">Cumulative Costs</div>
                                                             <div className="text-lg font-semibold">
                                                                 {fmtCurrency(scenario.cumCosts, currency)}
                                                             </div>
                                                         </div>
                                                         <div className="border-t pt-2">
-                                                            <div className="text-xs text-muted-foreground">Net Profit</div>
+                                                            <div className="text-xs text-muted-foreground">Cumulative Profit</div>
                                                             <div className="text-xl font-bold">
                                                                 {fmtCurrency(scenario.cumProfit, currency)}
                                                             </div>
@@ -597,7 +712,7 @@ export function ROIPage({ data, month }: ROIPageProps) {
                                     <ResponsiveContainer width="100%" height={300}>
                                         <LineChart
                                             data={Array.from({ length: data.meta.horizonMonths }, (_, i) => ({
-                                                month: i,
+                                                month: series[i]?.label ?? `M${i}`,
                                                 bearRevenue: monteCarloResults.scenarios[0]?.revenue[i] ?? 0,
                                                 baseRevenue: monteCarloResults.scenarios[1]?.revenue[i] ?? 0,
                                                 bullRevenue: monteCarloResults.scenarios[2]?.revenue[i] ?? 0,
@@ -607,16 +722,20 @@ export function ROIPage({ data, month }: ROIPageProps) {
                                             }))}
                                         >
                                             <CartesianGrid strokeDasharray="3 3" />
-                                            <XAxis dataKey="month" label={{ value: "Month", position: "insideBottom", offset: -5 }} />
+                                            <XAxis
+                                                dataKey="month"
+                                                tick={{ fontSize: 11 }}
+                                                interval={Math.max(1, Math.floor(data.meta.horizonMonths / 12))}
+                                            />
                                             <YAxis />
                                             <Tooltip formatter={(value) => fmtCurrency(Number(value), currency)} />
                                             <Legend />
-                                            <Line type="monotone" dataKey="bullRevenue" stroke="#10b981" name="Bull Revenue" strokeWidth={2} />
-                                            <Line type="monotone" dataKey="baseRevenue" stroke="#3b82f6" name="Base Revenue" strokeWidth={2} />
-                                            <Line type="monotone" dataKey="bearRevenue" stroke="#ef4444" name="Bear Revenue" strokeWidth={2} />
-                                            <Line type="monotone" dataKey="bullCosts" stroke="#10b981" name="Bull Costs" strokeWidth={1} strokeDasharray="5 5" />
-                                            <Line type="monotone" dataKey="baseCosts" stroke="#3b82f6" name="Base Costs" strokeWidth={1} strokeDasharray="5 5" />
-                                            <Line type="monotone" dataKey="bearCosts" stroke="#ef4444" name="Bear Costs" strokeWidth={1} strokeDasharray="5 5" />
+                                            <Line type="monotone" dataKey="bullRevenue" stroke="#10b981" name="Bull Revenue" strokeWidth={2} dot={false} />
+                                            <Line type="monotone" dataKey="baseRevenue" stroke="#3b82f6" name="Base Revenue" strokeWidth={2} dot={false} />
+                                            <Line type="monotone" dataKey="bearRevenue" stroke="#ef4444" name="Bear Revenue" strokeWidth={2} dot={false} />
+                                            <Line type="monotone" dataKey="bullCosts" stroke="#10b981" name="Bull Costs" strokeWidth={1} strokeDasharray="5 5" dot={false} />
+                                            <Line type="monotone" dataKey="baseCosts" stroke="#3b82f6" name="Base Costs" strokeWidth={1} strokeDasharray="5 5" dot={false} />
+                                            <Line type="monotone" dataKey="bearCosts" stroke="#ef4444" name="Bear Costs" strokeWidth={1} strokeDasharray="5 5" dot={false} />
                                         </LineChart>
                                     </ResponsiveContainer>
                                 </div>
@@ -629,7 +748,7 @@ export function ROIPage({ data, month }: ROIPageProps) {
                                             data={Array.from({ length: data.meta.horizonMonths }, (_, i) => {
                                                 const dist = monteCarloResults.distribution.profit[i] ?? [];
                                                 return {
-                                                    month: i,
+                                                    month: series[i]?.label ?? `M${i}`,
                                                     p10: dist[Math.floor(dist.length * 0.1)] ?? 0,
                                                     p50: dist[Math.floor(dist.length * 0.5)] ?? 0,
                                                     p90: dist[Math.floor(dist.length * 0.9)] ?? 0,
@@ -637,7 +756,11 @@ export function ROIPage({ data, month }: ROIPageProps) {
                                             })}
                                         >
                                             <CartesianGrid strokeDasharray="3 3" />
-                                            <XAxis dataKey="month" label={{ value: "Month", position: "insideBottom", offset: -5 }} />
+                                            <XAxis
+                                                dataKey="month"
+                                                tick={{ fontSize: 11 }}
+                                                interval={Math.max(1, Math.floor(data.meta.horizonMonths / 12))}
+                                            />
                                             <YAxis />
                                             <Tooltip formatter={(value) => fmtCurrency(Number(value), currency)} />
                                             <Legend />
