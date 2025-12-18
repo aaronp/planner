@@ -1071,15 +1071,45 @@ export function RevenueStreamsView({
 }: RevenueStreamsViewProps) {
     const [selectedStreamId, setSelectedStreamId] = useState<string | null>(revenueStreams[0]?.id ?? null);
 
-    // Store colors in component state (could be persisted elsewhere)
+    // Store colors in component state and sync with localStorage
     const [streamColors, setStreamColors] = useState<Map<string, string>>(() => {
         const palette = ["#4f46e5", "#16a34a", "#f97316", "#0ea5e9", "#a855f7", "#ef4444", "#14b8a6"];
+
+        // Try to load from localStorage first
+        const stored = localStorage.getItem("streamColors");
+        if (stored) {
+            try {
+                const obj = JSON.parse(stored);
+                const loadedMap = new Map<string, string>(Object.entries(obj));
+
+                // Fill in any missing colors for new streams
+                revenueStreams.forEach((s, i) => {
+                    if (!loadedMap.has(s.id)) {
+                        loadedMap.set(s.id, palette[i % palette.length]);
+                    }
+                });
+                return loadedMap;
+            } catch {
+                // Fall through to default
+            }
+        }
+
+        // Default initialization
         const map = new Map<string, string>();
         revenueStreams.forEach((s, i) => {
             map.set(s.id, palette[i % palette.length]);
         });
         return map;
     });
+
+    // Save colors to localStorage whenever they change
+    useEffect(() => {
+        const obj = Object.fromEntries(streamColors);
+        localStorage.setItem("streamColors", JSON.stringify(obj));
+
+        // Dispatch custom event to notify other components
+        window.dispatchEvent(new Event("streamColorsChanged"));
+    }, [streamColors]);
 
     const addStream = () => {
         const newStream: RevenueStream = {
@@ -1110,7 +1140,9 @@ export function RevenueStreamsView({
         };
 
         const palette = ["#4f46e5", "#16a34a", "#f97316", "#0ea5e9", "#a855f7", "#ef4444", "#14b8a6"];
-        setStreamColors(new Map(streamColors).set(newStream.id, palette[revenueStreams.length % palette.length]));
+        setStreamColors((prev) =>
+            new Map(prev).set(newStream.id, palette[revenueStreams.length % palette.length])
+        );
 
         onChange([...revenueStreams, newStream]);
         setSelectedStreamId(newStream.id);
@@ -1124,7 +1156,7 @@ export function RevenueStreamsView({
         };
 
         const existingColor = streamColors.get(stream.id) || "#4f46e5";
-        setStreamColors(new Map(streamColors).set(newStream.id, existingColor));
+        setStreamColors((prev) => new Map(prev).set(newStream.id, existingColor));
 
         onChange([...revenueStreams, newStream]);
         setSelectedStreamId(newStream.id);
@@ -1296,7 +1328,7 @@ export function RevenueStreamsView({
                                     timeline={timeline}
                                     streamColor={streamColors.get(selectedStream.id) || "#4f46e5"}
                                     onColorChange={(color) =>
-                                        setStreamColors(new Map(streamColors).set(selectedStream.id, color))
+                                        setStreamColors((prev) => new Map(prev).set(selectedStream.id, color))
                                     }
                                     onUpdate={(s) => updateStream(selectedStream.id, s)}
                                 />

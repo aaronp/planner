@@ -155,6 +155,32 @@ export function computeSeries(data: VentureData) {
         return data.opex.reduce((sum, o) => (isWithin(monthStartISO, o.start, o.end) ? sum + o.monthly : sum), 0);
     };
 
+    const fixedCostsMonthly = (m: number) => {
+        if (!data.costModel?.fixedMonthlyCosts) return 0;
+        const monthStartISO = addMonths(start, m);
+
+        return data.costModel.fixedMonthlyCosts.reduce((sum, fc) => {
+            // If no start event, include from beginning
+            if (!fc.startEventId) {
+                const costValue = typeof fc.monthlyCost === 'number' ? fc.monthlyCost : (fc.monthlyCost?.mode ?? fc.monthlyCost?.min ?? 0);
+                return sum + costValue;
+            }
+
+            // Find the task this fixed cost starts with
+            const startTask = computedTasks.find(t => t.id === fc.startEventId);
+            if (!startTask) return sum;
+
+            // Check if we're at or after the start task's start month
+            const startTaskMonthIndex = monthIndexFromStart(start, startTask.computedStart);
+            if (m >= startTaskMonthIndex) {
+                const costValue = typeof fc.monthlyCost === 'number' ? fc.monthlyCost : (fc.monthlyCost?.mode ?? fc.monthlyCost?.min ?? 0);
+                return sum + costValue;
+            }
+
+            return sum;
+        }, 0);
+    };
+
     const segmentUnitsAt = (m: number) =>
         Object.fromEntries(data.segments.map((s) => [s.id, segmentActiveUnitsAtMonth(s, start, m)])) as Record<
             string,
@@ -180,7 +206,7 @@ export function computeSeries(data: VentureData) {
             cac += delta * seg.cacPerUnit;
         }
 
-        const costs = taskMonthlyCost(m) + opexMonthly(m) + taskOneOffCost(m) + cac;
+        const costs = taskMonthlyCost(m) + opexMonthly(m) + taskOneOffCost(m) + cac + fixedCostsMonthly(m);
 
         return {
             m,

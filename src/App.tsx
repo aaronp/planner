@@ -5,8 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import {
     Select,
@@ -16,7 +16,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 
-import type { VentureData, Task, Opex, RevenueStream, TimelineEvent, FixedCost } from "./types";
+import type { VentureData, Task, RevenueStream, TimelineEvent, FixedCost } from "./types";
 import { loadData, saveData, DEFAULT } from "./utils/storage";
 import { fmtCurrency } from "./utils/formatUtils";
 import { computeSeries } from "./utils/modelEngine";
@@ -24,6 +24,7 @@ import { formatMonthLabel } from "./utils/dateUtils";
 
 // Route Pages
 import { TimelinePage } from "./pages/TimelinePage";
+import { TablePage } from "./pages/TablePage";
 import { SummaryPage } from "./pages/SummaryPage";
 import { GraphPage } from "./pages/GraphPage";
 import { CostsPage } from "./pages/CostsPage";
@@ -79,7 +80,6 @@ export default function App() {
     const snap = series[Math.min(series.length - 1, Math.max(0, month))] ?? series[0];
 
     const setTasks = (tasks: Task[]) => setData((prev) => ({ ...prev, tasks }));
-    const setOpex = (opex: Opex[]) => setData((prev) => ({ ...prev, opex }));
 
     // New data setters for spec-compliant model
     const setRevenueStreams = (revenueStreams: RevenueStream[]) => setData((prev) => ({ ...prev, revenueStreams }));
@@ -90,12 +90,6 @@ export default function App() {
     return (
         <BrowserRouter basename="/planner">
             <div className="p-4 md:p-6 max-w-[1400px] mx-auto">
-                {/* <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                        <h1 className="text-2xl font-semibold">{data.meta.name} Planner</h1>
-                        <p className="text-sm text-muted-foreground">venture modelling: tasks + market segments + snapshot financials.</p>
-                    </div>
-                </div> */}
 
                 <div className="mt-4 grid gap-4">
                     <Card className="rounded-2xl shadow-sm">
@@ -178,21 +172,14 @@ export default function App() {
                                 </>
                             )}
 
-                            <div className="flex flex-wrap gap-3 items-center">
-                                <div className="text-sm">
-                                    <span className="text-muted-foreground">Snapshot:</span>{" "}
-                                    <span className="font-medium">{formatMonthLabel(data.meta.start, month)}</span>
-                                </div>
-                                <Badge variant="secondary" className="rounded-xl">
-                                    Revenue {fmtCurrency(snap?.revenue ?? 0, currency)}
-                                </Badge>
-                                <Badge variant="secondary" className="rounded-xl">
-                                    Costs {fmtCurrency(snap?.costs ?? 0, currency)}
-                                </Badge>
-                                <Badge variant="secondary" className="rounded-xl">
-                                    Cash {fmtCurrency(snap?.cash ?? 0, currency)}
-                                </Badge>
-                                <div className="ml-auto w-[320px]">
+                            <div className="grid gap-4">
+                                {/* Timeline Slider */}
+                                <div>
+                                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                                        <span>Start</span>
+                                        <span>Month: {formatMonthLabel(data.meta.start, month)}</span>
+                                        <span>Horizon {data.meta.horizonMonths}m</span>
+                                    </div>
                                     <Slider
                                         value={[month]}
                                         min={0}
@@ -200,6 +187,23 @@ export default function App() {
                                         step={1}
                                         onValueChange={(v) => setMonth(v[0] ?? 0)}
                                     />
+                                </div>
+
+                                {/* Snapshot Badges */}
+                                <div className="flex flex-wrap gap-3 items-center">
+                                    <div className="text-sm">
+                                        <span className="text-muted-foreground">Snapshot:</span>{" "}
+                                        <span className="font-medium">{formatMonthLabel(data.meta.start, month)}</span>
+                                    </div>
+                                    <Badge variant="secondary" className="rounded-xl">
+                                        Revenue {fmtCurrency(snap?.revenue ?? 0, currency)}
+                                    </Badge>
+                                    <Badge variant="secondary" className="rounded-xl">
+                                        Costs {fmtCurrency(snap?.costs ?? 0, currency)}
+                                    </Badge>
+                                    <Badge variant="secondary" className="rounded-xl">
+                                        Cash {fmtCurrency(snap?.cash ?? 0, currency)}
+                                    </Badge>
                                 </div>
                             </div>
                         </CardContent>
@@ -210,6 +214,7 @@ export default function App() {
                         <NavLink to="/costs">Costs</NavLink>
                         <NavLink to="/revenue-streams">Revenue Streams</NavLink>
                         <NavLink to="/timeline">Timeline</NavLink>
+                        <NavLink to="/table">Table</NavLink>
                         <NavLink to="/graph">Graph</NavLink>
                         <NavLink to="/summary">Summary</NavLink>
                         <NavLink to="/data">Data</NavLink>
@@ -220,7 +225,11 @@ export default function App() {
                         <Route path="/" element={<Navigate to="/costs" replace />} />
                         <Route
                             path="/timeline"
-                            element={<TimelinePage data={data} month={month} setMonth={setMonth} />}
+                            element={<TimelinePage data={data} month={month} />}
+                        />
+                        <Route
+                            path="/table"
+                            element={<TablePage data={data} month={month} />}
                         />
                         <Route path="/graph" element={<GraphPage data={data} month={month} />} />
                         <Route path="/summary" element={<SummaryPage data={data} />} />
@@ -231,7 +240,6 @@ export default function App() {
                                     data={data}
                                     setTasks={setTasks}
                                     setFixedCosts={setFixedCosts}
-                                    setOpex={setOpex}
                                 />
                             }
                         />

@@ -55,7 +55,9 @@ export function parseDependency(depStr: string): {
     offset?: string; // Duration offset (e.g., "2w")
 } | null {
     // Match patterns like: T1, T1s, T1e, T1+2w, T1e+2w, T1s+3d, T3-2m, T1e-1w
-    const match = depStr.match(/^([a-zA-Z0-9_]+)([se])?(?:([+-])(.+))?$/);
+    // Task IDs are expected to be letters followed by numbers (e.g., T1, FC12, RS3)
+    // This prevents the greedy match from consuming the 's' or 'e' anchor
+    const match = depStr.match(/^([A-Z]+\d+)([se])?(?:([+-])(.+))?$/);
 
     if (!match) {
         return null;

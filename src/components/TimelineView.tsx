@@ -1,24 +1,57 @@
-import { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Slider } from "@/components/ui/slider";
 import type { VentureData, ComputedTask } from "../types";
 import { monthIndexFromStart, addMonths, formatMonthLabel, isWithin } from "../utils/dateUtils";
 import { fmtCurrency, fmtCompact, clamp01 } from "../utils/formatUtils";
 import { computeSeries, segmentActiveUnitsAtMonth, computeTaskDates } from "../utils/modelEngine";
-import { SankeyCard } from "./SankeyCard";
+
+// Map currency codes to symbols
+function getCurrencySymbol(currency: string): string {
+    const symbols: Record<string, string> = {
+        USD: "$",
+        EUR: "€",
+        GBP: "£",
+        JPY: "¥",
+        CNY: "¥",
+        CAD: "$",
+        AUD: "$",
+        NZD: "$",
+        CHF: "Fr",
+        INR: "₹",
+        KRW: "₩",
+        RUB: "₽",
+        BRL: "R$",
+        ZAR: "R",
+        MXN: "$",
+        SGD: "$",
+        HKD: "$",
+        SEK: "kr",
+        NOK: "kr",
+        DKK: "kr",
+        PLN: "zł",
+        THB: "฿",
+        IDR: "Rp",
+        MYR: "RM",
+        PHP: "₱",
+        TRY: "₺",
+        AED: "د.إ",
+        SAR: "﷼",
+    };
+    return symbols[currency] || currency;
+}
 
 export function TimelineView({
     data,
     month,
-    setMonth,
 }: {
     data: VentureData;
     month: number;
-    setMonth: (m: number) => void;
 }) {
     const { start, horizonMonths, currency } = data.meta;
+    // Track localStorage version to force reload when colors change
+    const [storageVersion, setStorageVersion] = useState(0);
 
     const months = useMemo(() => Array.from({ length: Math.max(1, horizonMonths) }, (_, i) => i), [horizonMonths]);
     const gridCols = Math.max(12, months.length);
@@ -28,6 +61,50 @@ export function TimelineView({
 
     const series = useMemo(() => computeSeries(data), [data]);
     const snap = series[Math.min(series.length - 1, Math.max(0, month))] ?? series[0];
+
+    // Listen to storage events to reload colors when they change
+    React.useEffect(() => {
+        const handleStorage = (e: StorageEvent) => {
+            if (e.key === "streamColors") {
+                setStorageVersion(v => v + 1);
+            }
+        };
+        window.addEventListener("storage", handleStorage);
+
+        // Also listen for custom event from same window (storage event doesn't fire in same window)
+        const handleCustomStorage = () => {
+            setStorageVersion(v => v + 1);
+        };
+        window.addEventListener("streamColorsChanged", handleCustomStorage);
+
+        return () => {
+            window.removeEventListener("storage", handleStorage);
+            window.removeEventListener("streamColorsChanged", handleCustomStorage);
+        };
+    }, []);
+
+    // Load stream colors from localStorage - reactive to storage changes
+    const streamColors = useMemo(() => {
+        const stored = localStorage.getItem("streamColors");
+        if (!stored) return new Map<string, string>();
+        try {
+            const obj = JSON.parse(stored);
+            return new Map<string, string>(Object.entries(obj));
+        } catch {
+            return new Map<string, string>();
+        }
+    }, [data.revenueStreams, storageVersion]);
+
+    // Calculate global max for bar chart scaling (prevent jumping)
+    const globalMax = useMemo(() => {
+        let maxRevenue = 0;
+        let maxCosts = 0;
+        for (const row of series) {
+            if (row.revenue > maxRevenue) maxRevenue = row.revenue;
+            if (row.costs > maxCosts) maxCosts = row.costs;
+        }
+        return Math.max(maxRevenue, maxCosts, 1); // Avoid division by zero
+    }, [series]);
 
     // Compute task dates
     const computedTasks = useMemo(() => computeTaskDates(data.tasks, start), [data.tasks, start]);
@@ -88,32 +165,212 @@ export function TimelineView({
 
     const segRevenueAtCursor = (s: any) => segmentActiveUnitsAtMonth(s, start, month) * s.pricePerUnit;
 
+    // Calculate active units for a revenue stream at a specific month
+    const streamUnitsAtMonth = (stream: any, m: number) => {
+        // Check if stream has started (unlockEventId)
+        const unlockEvent = data.timeline?.find((t) => t.id === stream.unlockEventId);
+        const startMonth = unlockEvent?.month ?? 0;
+
+        if (m < startMonth) return 0;
+
+        // Check if stream has ended (duration)
+        if (stream.duration) {
+            const match = stream.duration.match(/^(\d+)([dwmy])$/);
+            if (match) {
+                const value = parseInt(match[1]!, 10);
+                const unit = match[2]!;
+                let durationMonths = 0;
+                if (unit === "d") durationMonths = value / 30;
+                else if (unit === "w") durationMonths = value / 4;
+                else if (unit === "m") durationMonths = value;
+                else if (unit === "y") durationMonths = value * 12;
+
+                if (m >= startMonth + durationMonths) return 0;
+            }
+        }
+
+        // Calculate units based on adoption model
+        const monthsSinceStart = m - startMonth;
+        const { initialUnits, acquisitionRate, maxUnits, churnRate, expansionRate } = stream.adoptionModel;
+
+        // Get distribution mode (most likely value)
+        const getMode = (dist: any) => dist?.mode ?? ((dist?.min + dist?.max) / 2) ?? 0;
+
+        const acqRate = getMode(acquisitionRate);
+        const churn = getMode(churnRate) || 0;
+        const expansion = getMode(expansionRate) || 0;
+
+        // Simple model: start with initial units, grow by acquisition rate, apply net churn/expansion
+        let units = initialUnits;
+        for (let i = 0; i < monthsSinceStart; i++) {
+            // Add new acquisitions
+            units += acqRate;
+            // Apply net churn/expansion: units * (1 - churn + expansion)
+            units = units * (1 - churn / 100 + expansion / 100);
+            // Cap at max units if specified
+            if (maxUnits && units > maxUnits) units = maxUnits;
+        }
+
+        return Math.max(0, units);
+    };
+
+    // Calculate revenue for a revenue stream at a specific month
+    const streamRevenueAtMonth = (stream: any, m: number) => {
+        const units = streamUnitsAtMonth(stream, m);
+        const priceMode = stream.unitEconomics.pricePerUnit?.mode ??
+                         ((stream.unitEconomics.pricePerUnit?.min + stream.unitEconomics.pricePerUnit?.max) / 2) ?? 0;
+        return units * priceMode;
+    };
+
+    // Calculate cumulative revenue to date for a revenue stream
+    const streamRevenueToDate = (stream: any) => {
+        let total = 0;
+        for (let m = 0; m <= month; m++) {
+            total += streamRevenueAtMonth(stream, m);
+        }
+        return total;
+    };
+
+    // Find max revenue across all streams and months for proportional sizing
+    const maxMonthlyRevenue = useMemo(() => {
+        if (!data.revenueStreams || data.revenueStreams.length === 0) return 1;
+        let max = 0;
+        for (const stream of data.revenueStreams) {
+            for (let m = 0; m < horizonMonths; m++) {
+                const revenue = streamRevenueAtMonth(stream, m);
+                if (revenue > max) max = revenue;
+            }
+        }
+        return max || 1;
+    }, [data.revenueStreams, horizonMonths]);
+
+    // Calculate revenue breakdown by stream for current month
+    const revenueBreakdown = useMemo(() => {
+        if (!data.revenueStreams) return [];
+        return data.revenueStreams
+            .map((stream) => ({
+                stream,
+                revenue: streamRevenueAtMonth(stream, month),
+                color: streamColors.get(stream.id) || "#4f46e5",
+            }))
+            .filter((item) => item.revenue > 0)
+            .sort((a, b) => b.revenue - a.revenue);
+    }, [data.revenueStreams, month, streamColors]);
+
+    // Calculate cost breakdown by task for current month
+    const costBreakdown = useMemo(() => {
+        return computedTasks
+            .map((task, idx) => ({
+                task,
+                cost: taskCostAtMonth(task, month),
+                // Use varying shades of red for different tasks
+                color: `hsl(0, 70%, ${45 + (idx % 3) * 10}%)`,
+            }))
+            .filter((item) => item.cost > 0)
+            .sort((a, b) => b.cost - a.cost);
+    }, [computedTasks, month]);
+
     return (
-        <div className="grid gap-4">
-            <Card className="rounded-2xl shadow-sm">
-                <CardHeader className="flex flex-row items-center justify-between gap-4">
-                    <div>
-                        <CardTitle className="text-base">Timeline</CardTitle>
-                        <div className="text-sm text-muted-foreground">
-                            Month cursor: <span className="font-medium text-foreground">{monthLabel}</span> ({monthISO})
+        <Card className="rounded-2xl shadow-sm">
+                <CardHeader className="space-y-4">
+                    <div className="flex flex-row items-center justify-between gap-4">
+                        <div>
+                            <CardTitle className="text-base">Timeline</CardTitle>
+                            <div className="text-sm text-muted-foreground">
+                                Month cursor: <span className="font-medium text-foreground">{monthLabel}</span> ({monthISO})
+                            </div>
                         </div>
                     </div>
-                    <div className="w-[320px]">
-                        <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-                            <span>Start</span>
-                            <span>Horizon {horizonMonths}m</span>
+
+                    {/* Snapshot - Stacked Bar Charts */}
+                    <div className="grid grid-cols-[1fr_auto] gap-4 pt-2 border-t">
+                        <div className="space-y-3">
+                            {/* Revenue Bar */}
+                            <div>
+                                <div className="text-xs text-muted-foreground mb-1.5">Revenue</div>
+                                <div className="flex h-8 rounded overflow-hidden border">
+                                    {revenueBreakdown.length > 0 ? (
+                                        <>
+                                            {revenueBreakdown.map((item) => {
+                                                const widthPct = (item.revenue / globalMax) * 100;
+                                                return (
+                                                    <div
+                                                        key={item.stream.id}
+                                                        className="flex items-center justify-center text-[10px] font-medium text-white"
+                                                        style={{
+                                                            width: `${widthPct}%`,
+                                                            backgroundColor: item.color,
+                                                        }}
+                                                        title={`${item.stream.name}: ${fmtCurrency(item.revenue, currency)}`}
+                                                    >
+                                                        {widthPct > 10 && fmtCurrency(item.revenue, currency)}
+                                                    </div>
+                                                );
+                                            })}
+                                            {snap.revenue < globalMax && (
+                                                <div className="flex-1 bg-muted/30" />
+                                            )}
+                                        </>
+                                    ) : (
+                                        <div className="flex-1 bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                                            No revenue
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Run Rate (Costs) Bar */}
+                            <div>
+                                <div className="text-xs text-muted-foreground mb-1.5">Run Rate</div>
+                                <div className="flex h-8 rounded overflow-hidden border">
+                                    {costBreakdown.length > 0 ? (
+                                        <>
+                                            {costBreakdown.map((item) => {
+                                                const widthPct = (item.cost / globalMax) * 100;
+                                                return (
+                                                    <div
+                                                        key={item.task.id}
+                                                        className="flex items-center justify-center text-[10px] font-medium text-white"
+                                                        style={{
+                                                            width: `${widthPct}%`,
+                                                            backgroundColor: item.color,
+                                                        }}
+                                                        title={`${item.task.name}: ${fmtCurrency(item.cost, currency)}`}
+                                                    >
+                                                        {widthPct > 10 && fmtCurrency(item.cost, currency)}
+                                                    </div>
+                                                );
+                                            })}
+                                            {snap.costs < globalMax && (
+                                                <div className="flex-1 bg-muted/30" />
+                                            )}
+                                        </>
+                                    ) : (
+                                        <div className="flex-1 bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                                            No costs
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
-                        <Slider
-                            value={[month]}
-                            min={0}
-                            max={Math.max(0, horizonMonths - 1)}
-                            step={1}
-                            onValueChange={(v) => setMonth(v[0] ?? 0)}
-                        />
+
+                        {/* Gross Margin */}
+                        <div className="flex flex-col justify-center px-4 border-l space-y-2">
+                            <div>
+                                <div className="text-xs text-muted-foreground">Gross Margin (at month)</div>
+                                <div className="text-lg font-bold">{fmtCurrency(snap.profit, currency)}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-muted-foreground">Gross Margin (to date)</div>
+                                <div className="text-lg font-semibold">
+                                    {fmtCurrency(snap.cash ?? 0, currency)}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <div className="overflow-auto">
+                    <div className="overflow-auto max-h-[600px]">
                         <div className="min-w-[1100px]">
                             {/* Month header */}
                             <div
@@ -189,18 +446,19 @@ export function TimelineView({
                                                             {hasContent ? (
                                                                 <div className="h-full flex flex-col justify-end p-[3px]">
                                                                     <div
-                                                                        className={`rounded-lg ${active ? "bg-primary/25" : "bg-muted"} ${blocked ? "ring-1 ring-destructive/60" : ""} relative flex items-end justify-center`}
+                                                                        className={`rounded-lg ${active ? "bg-red-500/25" : "bg-red-500/15"} ${blocked ? "ring-1 ring-destructive/60" : ""} relative flex items-end justify-center`}
                                                                         style={{ height: `${Math.max(20, costPct)}%` }}
                                                                         title={`${t.name}\n${t.computedStart} → ${t.computedEnd || "ongoing"}\nCost this month: ${fmtCurrency(monthlyCost, currency)}\nDuration: ${t.duration || "ongoing"}\nDepends: ${t.dependsOn.join(", ") || "—"}`}
                                                                     >
                                                                         <div
-                                                                            className="text-[8px] text-muted-foreground/80 font-medium pb-[2px]"
+                                                                            className="text-[10px] text-muted-foreground/80 font-medium"
                                                                             style={{
                                                                                 writingMode: "vertical-rl",
                                                                                 transform: "rotate(180deg)",
+                                                                                paddingLeft: "6px",
                                                                             }}
                                                                         >
-                                                                            {fmtCompact(monthlyCost)}
+                                                                            {getCurrencySymbol(currency)}{fmtCompact(monthlyCost)}
                                                                         </div>
                                                                     </div>
                                                                 </div>
@@ -220,92 +478,104 @@ export function TimelineView({
 
                             <Separator className="my-4" />
 
-                            {/* Segments */}
+                            {/* Revenue Streams */}
                             <div>
-                                <div className="px-2 py-1 text-xs font-medium text-muted-foreground">Market Segments</div>
-                                {data.segments
-                                    .slice()
-                                    .sort((a, b) => monthIndexFromStart(start, a.entry) - monthIndexFromStart(start, b.entry))
-                                    .map((seg) => {
-                                        const entryM = monthIndexFromStart(start, seg.entry);
-                                        const exitM = seg.exit ? monthIndexFromStart(start, seg.exit) : gridCols - 1;
+                                <div className="px-2 py-1 text-xs font-medium text-muted-foreground">Revenue Streams</div>
+                                {data.revenueStreams && data.revenueStreams.length > 0 ? (
+                                    data.revenueStreams.map((stream) => {
+                                        const unlockEvent = data.timeline?.find((t) => t.id === stream.unlockEventId);
+                                        const startMonth = unlockEvent?.month ?? 0;
 
-                                        const samPct = clamp01(seg.samPct);
-                                        const somPct = clamp01(seg.somPct);
+                                        // Calculate end month based on duration
+                                        let endMonth = gridCols - 1;
+                                        if (stream.duration) {
+                                            const match = stream.duration.match(/^(\d+)([dwmy])$/);
+                                            if (match) {
+                                                const value = parseInt(match[1]!, 10);
+                                                const unit = match[2]!;
+                                                let durationMonths = 0;
+                                                if (unit === "d") durationMonths = value / 30;
+                                                else if (unit === "w") durationMonths = value / 4;
+                                                else if (unit === "m") durationMonths = value;
+                                                else if (unit === "y") durationMonths = value * 12;
+                                                endMonth = Math.min(startMonth + durationMonths - 1, gridCols - 1);
+                                            }
+                                        }
 
-                                        const tam = Math.max(0, seg.tam);
-                                        const sam = tam * samPct;
-                                        const som = sam * somPct;
-
-                                        const unitsNow = segmentActiveUnitsAtMonth(seg, start, month);
-                                        const revenueNow = segRevenueAtCursor(seg);
+                                        const revenueToDate = streamRevenueToDate(stream);
+                                        const unitsNow = streamUnitsAtMonth(stream, month);
+                                        const revenueNow = streamRevenueAtMonth(stream, month);
 
                                         return (
                                             <div
-                                                key={seg.id}
+                                                key={stream.id}
                                                 className="grid items-stretch"
                                                 style={{
                                                     gridTemplateColumns: `260px repeat(${gridCols}, minmax(26px, 1fr)) 240px`,
                                                 }}
                                             >
                                                 <div className="sticky left-0 bg-background z-10 p-2 border-b">
-                                                    <div className="text-sm font-medium truncate">{seg.name}</div>
+                                                    <div className="text-sm font-medium truncate">{stream.name}</div>
                                                     <div className="text-xs text-muted-foreground truncate">
-                                                        {seg.id} · Entry {seg.entry}
-                                                        {seg.exit ? ` · Exit ${seg.exit}` : ""}
+                                                        {stream.id} · {stream.revenueUnit}
                                                     </div>
-                                                    <div className="mt-1 flex flex-wrap gap-2">
-                                                        <Badge variant="secondary" className="rounded-xl">
-                                                            TAM {fmtCompact(tam)}
-                                                        </Badge>
-                                                        <Badge variant="secondary" className="rounded-xl">
-                                                            SAM {fmtCompact(sam)} ({(samPct * 100).toFixed(1)}%)
-                                                        </Badge>
-                                                        <Badge variant="secondary" className="rounded-xl">
-                                                            SOM {fmtCompact(som)} ({(somPct * 100).toFixed(1)}%)
-                                                        </Badge>
+                                                    <div className="mt-1 text-xs text-muted-foreground">
+                                                        Start M{startMonth}
+                                                        {stream.duration ? ` · ${stream.duration}` : " · Infinite"}
                                                     </div>
                                                 </div>
 
                                                 {months.map((m) => {
-                                                    const inside = m >= entryM && m <= exitM;
+                                                    const inside = m >= startMonth && m <= endMonth;
                                                     const isCursor = m === month;
-                                                    if (!inside) return <div key={m} className={`border-b ${isCursor ? "bg-muted/60" : ""}`} />;
-
-                                                    const barH = 34;
-                                                    const samW = Math.max(4, Math.round(samPct * 100));
-                                                    const somWithinSam = samPct > 0 ? Math.max(2, Math.round((somPct / samPct) * 100)) : 2;
+                                                    const monthlyRevenue = streamRevenueAtMonth(stream, m);
+                                                    const revenuePct = maxMonthlyRevenue > 0 ? (monthlyRevenue / maxMonthlyRevenue) * 100 : 0;
+                                                    const hasRevenue = inside && monthlyRevenue > 0;
+                                                    const streamColor = streamColors.get(stream.id) || "#4f46e5";
 
                                                     return (
-                                                        <div key={m} className={`border-b ${isCursor ? "bg-muted/60" : ""}`}>
-                                                            <div className="m-[6px] rounded-lg bg-muted/70" style={{ height: barH }}>
-                                                                <div className="h-full rounded-lg bg-primary/15" style={{ width: `${samW}%` }}>
+                                                        <div key={m} className={`border-b ${isCursor ? "bg-muted/60" : ""} relative`}>
+                                                            {hasRevenue ? (
+                                                                <div className="h-full flex flex-col justify-end p-[3px]">
                                                                     <div
-                                                                        className="h-full rounded-lg bg-primary/35"
-                                                                        style={{ width: `${somWithinSam}%` }}
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                            {isCursor && (
-                                                                <div className="px-1 pb-2 text-[10px] text-muted-foreground">
-                                                                    <div className="flex items-center justify-between">
-                                                                        <span>SAM {(samPct * 100).toFixed(0)}%</span>
-                                                                        <span>SOM {(somPct * 100).toFixed(0)}%</span>
+                                                                        className="rounded-lg relative flex items-end justify-center"
+                                                                        style={{
+                                                                            height: `${Math.max(20, revenuePct)}%`,
+                                                                            backgroundColor: `${streamColor}40`,
+                                                                        }}
+                                                                        title={`${stream.name}\nRevenue: ${fmtCurrency(monthlyRevenue, currency)}\nUnits: ${fmtCompact(streamUnitsAtMonth(stream, m))}`}
+                                                                    >
+                                                                        <div
+                                                                            className="text-[10px] font-medium"
+                                                                            style={{
+                                                                                writingMode: "vertical-rl",
+                                                                                transform: "rotate(180deg)",
+                                                                                paddingLeft: "6px",
+                                                                                color: streamColor,
+                                                                            }}
+                                                                        >
+                                                                            {getCurrencySymbol(currency)}{fmtCompact(monthlyRevenue)}
+                                                                        </div>
                                                                     </div>
                                                                 </div>
-                                                            )}
+                                                            ) : null}
                                                         </div>
                                                     );
                                                 })}
 
                                                 <div className="sticky right-0 bg-background z-10 p-2 border-b text-right">
-                                                    <div className="text-xs text-muted-foreground">Now</div>
-                                                    <div className="text-sm font-medium">{fmtCurrency(revenueNow, currency)}</div>
+                                                    <div className="text-xs text-muted-foreground">Revenue to Date</div>
+                                                    <div className="text-sm font-medium">{fmtCurrency(revenueToDate, currency)}</div>
                                                     <div className="text-xs text-muted-foreground mt-1">Units {fmtCompact(unitsNow)}</div>
                                                 </div>
                                             </div>
                                         );
-                                    })}
+                                    })
+                                ) : (
+                                    <div className="px-2 py-2 text-xs text-muted-foreground">
+                                        No revenue streams defined yet.
+                                    </div>
+                                )}
 
                                 {/* Overall row */}
                                 <div
@@ -338,8 +608,5 @@ export function TimelineView({
                     </div>
                 </CardContent>
             </Card>
-
-            <SankeyCard data={data} month={month} />
-        </div>
     );
 }

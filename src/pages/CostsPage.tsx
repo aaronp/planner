@@ -1,4 +1,4 @@
-import type { VentureData, Task, FixedCost, Opex } from "../types";
+import type { VentureData, Task, FixedCost } from "../types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -6,15 +6,19 @@ import { Input } from "@/components/ui/input";
 import { DataTable } from "../components/DataTable";
 import { uid } from "../utils/formatUtils";
 import { isValidDuration, isValidDependency, calculateTaskStartDate } from "../utils/taskUtils";
+import { computeTaskDates } from "../utils/modelEngine";
+import { useMemo } from "react";
 
 type CostsPageProps = {
     data: VentureData;
     setTasks: (tasks: Task[]) => void;
     setFixedCosts: (costs: FixedCost[]) => void;
-    setOpex: (opex: Opex[]) => void;
 };
 
-export function CostsPage({ data, setTasks, setFixedCosts, setOpex }: CostsPageProps) {
+export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
+    // Compute task dates for displaying in Fixed Costs
+    const computedTasks = useMemo(() => computeTaskDates(data.tasks, data.meta.start), [data.tasks, data.meta.start]);
+
     // Calculate next Task ID based on max existing ID
     const getNextTaskId = () => {
         const taskNumbers = data.tasks
@@ -27,6 +31,19 @@ export function CostsPage({ data, setTasks, setFixedCosts, setOpex }: CostsPageP
         return `T${maxNum + 1}`;
     };
 
+    // Calculate next Fixed Cost ID based on max existing ID
+    const getNextFixedCostId = () => {
+        const fixedCosts = data.costModel?.fixedMonthlyCosts ?? [];
+        const fcNumbers = fixedCosts
+            .map((fc) => {
+                const match = fc.id.match(/^FC(\d+)$/);
+                return match ? parseInt(match[1], 10) : 0;
+            })
+            .filter((n) => !isNaN(n));
+        const maxNum = fcNumbers.length > 0 ? Math.max(...fcNumbers) : 0;
+        return `FC${maxNum + 1}`;
+    };
+
     return (
         <Tabs defaultValue="tasks" className="w-full">
             <TabsList className="rounded-2xl">
@@ -35,9 +52,6 @@ export function CostsPage({ data, setTasks, setFixedCosts, setOpex }: CostsPageP
                 </TabsTrigger>
                 <TabsTrigger value="fixed-costs" className="rounded-2xl">
                     Fixed Costs
-                </TabsTrigger>
-                <TabsTrigger value="opex" className="rounded-2xl">
-                    Operating Costs (Legacy)
                 </TabsTrigger>
             </TabsList>
 
@@ -183,50 +197,95 @@ export function CostsPage({ data, setTasks, setFixedCosts, setOpex }: CostsPageP
                             rows={data.costModel?.fixedMonthlyCosts ?? []}
                             setRows={setFixedCosts}
                             addRow={() => ({
-                                id: uid("FC"),
+                                id: getNextFixedCostId(),
                                 name: "New Fixed Cost",
                                 monthlyCost: { type: "triangular", min: 0, mode: 0, max: 0 },
                                 startEventId: undefined,
                             })}
                             columns={[
-                                { key: "id", header: "ID", width: "110px", input: "text" },
+                                {
+                                    key: "id",
+                                    header: "ID",
+                                    width: "110px",
+                                    render: (v) => <span className="text-sm font-mono">{v}</span>,
+                                },
                                 { key: "name", header: "Name", width: "280px", input: "text" },
                                 {
                                     key: "monthlyCost",
-                                    header: "Monthly Cost (simple value)",
-                                    width: "200px",
-                                    render: (v) => {
-                                        const dist = typeof v === "number" ? v : v?.mode ?? v?.min ?? 0;
-                                        return <span>{dist}</span>;
+                                    header: "Monthly Cost",
+                                    width: "180px",
+                                    render: (v, row) => {
+                                        const currentValue = typeof v === "number" ? v : v?.mode ?? v?.min ?? 0;
+                                        return (
+                                            <Input
+                                                type="number"
+                                                className="h-8 rounded-xl"
+                                                value={currentValue}
+                                                onChange={(e) => {
+                                                    const newValue = Number(e.target.value || 0);
+                                                    const fixedCosts = data.costModel?.fixedMonthlyCosts ?? [];
+                                                    setFixedCosts(
+                                                        fixedCosts.map((fc) =>
+                                                            fc.id === row.id
+                                                                ? {
+                                                                      ...fc,
+                                                                      monthlyCost: {
+                                                                          type: "triangular",
+                                                                          min: newValue,
+                                                                          mode: newValue,
+                                                                          max: newValue,
+                                                                      },
+                                                                  }
+                                                                : fc
+                                                        )
+                                                    );
+                                                }}
+                                            />
+                                        );
                                     },
                                 },
-                                { key: "startEventId", header: "Start Event ID", width: "150px", input: "text" },
-                            ]}
-                        />
-                    </CardContent>
-                </Card>
-            </TabsContent>
-
-            {/* Opex Tab */}
-            <TabsContent value="opex" className="mt-4">
-                <Card className="rounded-2xl shadow-sm">
-                    <CardContent className="p-6">
-                        <DataTable<Opex>
-                            title="Operating Costs (Opex) - Legacy"
-                            rows={data.opex}
-                            setRows={setOpex}
-                            addRow={() => ({
-                                id: uid("O"),
-                                category: "New Opex",
-                                start: data.meta.start,
-                                monthly: 0,
-                            })}
-                            columns={[
-                                { key: "id", header: "ID", width: "110px", input: "text" },
-                                { key: "category", header: "Category", width: "260px", input: "text" },
-                                { key: "start", header: "Start", width: "150px", input: "date" },
-                                { key: "end", header: "End", width: "150px", input: "date" },
-                                { key: "monthly", header: "Monthly", width: "160px", input: "number" },
+                                {
+                                    key: "startEventId",
+                                    header: "Starts on",
+                                    width: "240px",
+                                    render: (v, row) => {
+                                        const selectedTask = computedTasks.find((t) => t.id === v);
+                                        return (
+                                            <div className="space-y-1">
+                                                <Select
+                                                    value={v || "none"}
+                                                    onValueChange={(nv) => {
+                                                        const fixedCosts = data.costModel?.fixedMonthlyCosts ?? [];
+                                                        setFixedCosts(
+                                                            fixedCosts.map((fc) =>
+                                                                fc.id === row.id
+                                                                    ? { ...fc, startEventId: nv === "none" ? undefined : nv }
+                                                                    : fc
+                                                            )
+                                                        );
+                                                    }}
+                                                >
+                                                    <SelectTrigger className="h-8 rounded-xl">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="none">From start</SelectItem>
+                                                        {computedTasks.map((t) => (
+                                                            <SelectItem key={t.id} value={t.id}>
+                                                                {t.name}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                                {selectedTask && (
+                                                    <div className="text-xs text-muted-foreground">
+                                                        From: {selectedTask.computedStart}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    },
+                                },
                             ]}
                         />
                     </CardContent>
