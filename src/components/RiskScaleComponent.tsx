@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import type { VentureData } from "../types";
 
 export type RiskMultipliers = {
@@ -31,6 +33,10 @@ export function RiskScaleComponent({
     streamDistributions,
     onStreamDistributionsChange,
 }: RiskScaleComponentProps) {
+    const [tasksCollapsed, setTasksCollapsed] = useState(false);
+    const [fixedCostsCollapsed, setFixedCostsCollapsed] = useState(false);
+    const [revenueStreamsCollapsed, setRevenueStreamsCollapsed] = useState(false);
+
     const updateTaskMultiplier = (taskId: string, value: number) => {
         onMultipliersChange({
             ...multipliers,
@@ -69,8 +75,18 @@ export function RiskScaleComponent({
                     {/* Revenue Streams */}
                     {data.revenueStreams && data.revenueStreams.length > 0 && (
                         <div className="space-y-4">
-                            <Label className="text-sm font-medium">Revenue Streams</Label>
-                            {data.revenueStreams.map((stream) => {
+                            <div
+                                className="flex items-center gap-2 cursor-pointer"
+                                onClick={() => setRevenueStreamsCollapsed(!revenueStreamsCollapsed)}
+                            >
+                                <Label className="text-sm font-medium cursor-pointer">Revenue Streams</Label>
+                                {revenueStreamsCollapsed ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                    <ChevronUp className="h-4 w-4" />
+                                )}
+                            </div>
+                            {!revenueStreamsCollapsed && data.revenueStreams.map((stream) => {
                                 const multiplier = multipliers.revenueStreams[stream.id] ?? 1;
                                 const distribution = streamDistributions[stream.id] ?? "mode";
                                 return (
@@ -119,8 +135,18 @@ export function RiskScaleComponent({
                     {/* Task Costs */}
                     {data.tasks && data.tasks.length > 0 && (
                         <div className="space-y-3">
-                            <Label className="text-sm font-medium">Task Cost Multipliers</Label>
-                            {data.tasks.map((task) => {
+                            <div
+                                className="flex items-center gap-2 cursor-pointer"
+                                onClick={() => setTasksCollapsed(!tasksCollapsed)}
+                            >
+                                <Label className="text-sm font-medium cursor-pointer">Task Cost Multipliers</Label>
+                                {tasksCollapsed ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                    <ChevronUp className="h-4 w-4" />
+                                )}
+                            </div>
+                            {!tasksCollapsed && data.tasks.map((task) => {
                                 const multiplier = multipliers.tasks[task.id] ?? 1;
                                 return (
                                     <div key={task.id} className="space-y-2">
@@ -145,8 +171,18 @@ export function RiskScaleComponent({
                     {/* Fixed Costs */}
                     {data.costModel?.fixedMonthlyCosts && data.costModel.fixedMonthlyCosts.length > 0 && (
                         <div className="space-y-3">
-                            <Label className="text-sm font-medium">Fixed Cost Multipliers</Label>
-                            {data.costModel.fixedMonthlyCosts.map((fixedCost) => {
+                            <div
+                                className="flex items-center gap-2 cursor-pointer"
+                                onClick={() => setFixedCostsCollapsed(!fixedCostsCollapsed)}
+                            >
+                                <Label className="text-sm font-medium cursor-pointer">Fixed Cost Multipliers</Label>
+                                {fixedCostsCollapsed ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                    <ChevronUp className="h-4 w-4" />
+                                )}
+                            </div>
+                            {!fixedCostsCollapsed && data.costModel.fixedMonthlyCosts.map((fixedCost) => {
                                 const multiplier = multipliers.fixedCosts[fixedCost.id] ?? 1;
                                 return (
                                     <div key={fixedCost.id} className="space-y-2">

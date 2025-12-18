@@ -26,7 +26,7 @@ type GraphPageProps = {
 };
 
 export function GraphPage({ data }: GraphPageProps) {
-    const { multipliers, streamDistributions } = useRisk();
+    const { multipliers, streamDistributions, distributionSelection } = useRisk();
     const currency = data.meta.currency;
     const start = data.meta.start;
     const horizonMonths = data.meta.horizonMonths;

@@ -20,7 +20,7 @@ type TablePageProps = {
 };
 
 export function TablePage({ data, month }: TablePageProps) {
-    const { multipliers, streamDistributions } = useRisk();
+    const { multipliers, streamDistributions, distributionSelection } = useRisk();
     const { start, currency } = data.meta;
     // Track expanded cells by "streamId:monthIndex" key
     const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
@@ -434,7 +434,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                     computedTasks,
                                                     start,
                                                     multipliers.fixedCosts,
-                                                    streamDistributions
+                                                    distributionSelection
                                                 );
                                                 const isActive = fixedCostData.costs.length > 0;
                                                 const costValue = isActive ? fixedCostData.total : 0;
