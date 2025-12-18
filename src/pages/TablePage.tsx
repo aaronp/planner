@@ -1,9 +1,17 @@
 import React, { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { VentureData } from "../types";
-import { addMonths, isWithin } from "../utils/dateUtils";
 import { fmtCurrency, fmtCompact } from "../utils/formatUtils";
 import { computeSeries, computeTaskDates } from "../utils/modelEngine";
+import {
+    streamUnitsAtMonth,
+    streamRevenueAtMonth,
+    streamAcquisitionCostsAtMonth,
+    taskCostAtMonth,
+    fixedCostsAtMonth,
+    getDistributionMode,
+} from "../utils/logic";
+import { calculateTotalCosts, calculateTotalMargin, type FormulaComponent } from "../utils/formulas";
 
 type TablePageProps = {
     data: VentureData;
@@ -21,21 +29,6 @@ export function TablePage({ data, month }: TablePageProps) {
 
     // Compute task dates for cost calculations
     const computedTasks = useMemo(() => computeTaskDates(data.tasks, data.meta.start), [data.tasks, data.meta.start]);
-
-    // Calculate cost for a task at a specific month index
-    const taskCostAtMonth = (task: any, monthIdx: number) => {
-        const monthISO = addMonths(start, monthIdx);
-        const isActive = isWithin(monthISO, task.computedStart, task.computedEnd);
-        const isStartMonth = task.computedStart === monthISO;
-
-        if (!isActive) return { oneOff: 0, monthly: 0, total: 0 };
-
-        const oneOff = isStartMonth ? task.costOneOff : 0;
-        const monthly = task.costMonthly;
-        const total = oneOff + monthly;
-
-        return { oneOff, monthly, total };
-    };
 
     // Listen to storage events to reload colors when they change
     React.useEffect(() => {
@@ -69,65 +62,6 @@ export function TablePage({ data, month }: TablePageProps) {
             return new Map<string, string>();
         }
     }, [data.revenueStreams, storageVersion]);
-
-    // Calculate active units for a revenue stream at a specific month
-    const streamUnitsAtMonth = (stream: any, m: number) => {
-        // Check if stream has started (unlockEventId)
-        const unlockEvent = data.timeline?.find((t) => t.id === stream.unlockEventId);
-        const startMonth = unlockEvent?.month ?? 0;
-
-        if (m < startMonth) return 0;
-
-        // Check if stream has ended (duration)
-        if (stream.duration) {
-            const match = stream.duration.match(/^(\d+)([dwmy])$/);
-            if (match) {
-                const value = parseInt(match[1]!, 10);
-                const unit = match[2]!;
-                let durationMonths = 0;
-                if (unit === "d") durationMonths = value / 30;
-                else if (unit === "w") durationMonths = value / 4;
-                else if (unit === "m") durationMonths = value;
-                else if (unit === "y") durationMonths = value * 12;
-
-                if (m >= startMonth + durationMonths) return 0;
-            }
-        }
-
-        // Calculate units based on adoption model
-        const monthsSinceStart = m - startMonth;
-        const { initialUnits, acquisitionRate, maxUnits, churnRate, expansionRate } = stream.adoptionModel;
-
-        // Get distribution mode (most likely value)
-        const getMode = (dist: any) => dist?.mode ?? ((dist?.min + dist?.max) / 2) ?? 0;
-
-        const acqRate = getMode(acquisitionRate);
-        const churn = getMode(churnRate) || 0;
-        const expansion = getMode(expansionRate) || 0;
-
-        // Simple model: start with initial units, grow by acquisition rate, apply net churn/expansion
-        let units = initialUnits;
-        for (let i = 0; i < monthsSinceStart; i++) {
-            // Add new acquisitions
-            units += acqRate;
-            // Apply net churn/expansion: units * (1 - churn + expansion)
-            units = units * (1 - churn / 100 + expansion / 100);
-            // Cap at max units if specified
-            if (maxUnits && units > maxUnits) units = maxUnits;
-        }
-
-        return Math.max(0, units);
-    };
-
-    // Calculate revenue for a revenue stream at a specific month
-    const streamRevenueAtMonth = (stream: any, m: number) => {
-        const units = streamUnitsAtMonth(stream, m);
-        const priceMode =
-            stream.unitEconomics.pricePerUnit?.mode ??
-            (stream.unitEconomics.pricePerUnit?.min + stream.unitEconomics.pricePerUnit?.max) / 2 ??
-            0;
-        return units * priceMode;
-    };
 
     return (
         <Card className="rounded-2xl shadow-sm">
@@ -163,6 +97,21 @@ export function TablePage({ data, month }: TablePageProps) {
                                             </th>
                                         );
                                     })}
+                                {data.revenueStreams &&
+                                    data.revenueStreams.map((stream) => (
+                                        <th
+                                            key={`${stream.id}-acq`}
+                                            className="text-center p-2 font-medium border-l"
+                                            style={{
+                                                backgroundColor: "hsl(30, 80%, 95%)",
+                                                borderLeftColor: "hsl(30, 80%, 60%)",
+                                                borderLeftWidth: "3px",
+                                            }}
+                                        >
+                                            <div className="text-xs">{stream.name}</div>
+                                            <div className="text-xs font-normal text-muted-foreground mt-1">Acquisition</div>
+                                        </th>
+                                    ))}
                                 {computedTasks.map((task) => (
                                     <th
                                         key={task.id}
@@ -175,6 +124,20 @@ export function TablePage({ data, month }: TablePageProps) {
                                     >
                                         <div className="text-xs">{task.name}</div>
                                         <div className="text-xs font-normal text-muted-foreground mt-1">Cost</div>
+                                    </th>
+                                ))}
+                                {(data.costModel?.fixedMonthlyCosts ?? []).map((fixedCost) => (
+                                    <th
+                                        key={fixedCost.id}
+                                        className="text-center p-2 font-medium border-l"
+                                        style={{
+                                            backgroundColor: "hsl(280, 50%, 95%)",
+                                            borderLeftColor: "hsl(280, 50%, 60%)",
+                                            borderLeftWidth: "3px",
+                                        }}
+                                    >
+                                        <div className="text-xs">{fixedCost.name}</div>
+                                        <div className="text-xs font-normal text-muted-foreground mt-1">Fixed Cost</div>
                                     </th>
                                 ))}
                                 <th className="text-right p-2 font-medium text-muted-foreground border-l">Total Costs</th>
@@ -200,32 +163,15 @@ export function TablePage({ data, month }: TablePageProps) {
                                                     const cellKey = `stream:${stream.id}:${idx}`;
                                                     const isExpanded = expandedCells.has(cellKey);
 
-                                                    const units = streamUnitsAtMonth(stream, idx);
-                                                    const priceDist = stream.unitEconomics.pricePerUnit;
-                                                    const priceMode =
-                                                        priceDist?.mode ?? ((priceDist?.min ?? 0) + (priceDist?.max ?? 0)) / 2;
-                                                    const streamRev = streamRevenueAtMonth(stream, idx);
+                                                    // Use centralized logic
+                                                    const units = streamUnitsAtMonth(stream, idx, data.timeline);
+                                                    const priceMode = getDistributionMode(stream.unitEconomics.pricePerUnit);
+                                                    const streamRev = streamRevenueAtMonth(stream, idx, data.timeline);
+                                                    const costs = streamAcquisitionCostsAtMonth(stream, idx, data.timeline);
+                                                    const margin = streamRev - costs.total;
 
-                                                    // Calculate costs
-                                                    const unitsLastMonth = idx > 0 ? streamUnitsAtMonth(stream, idx - 1) : 0;
+                                                    const unitsLastMonth = idx > 0 ? streamUnitsAtMonth(stream, idx - 1, data.timeline) : 0;
                                                     const newUnits = Math.max(0, units - unitsLastMonth);
-
-                                                    const getDistValue = (dist: any) => {
-                                                        if (!dist) return 0;
-                                                        return dist.mode ?? ((dist.min ?? 0) + (dist.max ?? 0)) / 2;
-                                                    };
-
-                                                    const cacPerUnit = stream.acquisitionCosts
-                                                        ? getDistValue(stream.acquisitionCosts.cacPerUnit)
-                                                        : 0;
-                                                    const onboardingPerUnit = stream.acquisitionCosts?.onboardingCostPerUnit
-                                                        ? getDistValue(stream.acquisitionCosts.onboardingCostPerUnit)
-                                                        : 0;
-
-                                                    const cacCost = newUnits * cacPerUnit;
-                                                    const onboardingTotal = newUnits * onboardingPerUnit;
-                                                    const totalCosts = cacCost + onboardingTotal;
-                                                    const margin = streamRev - totalCosts;
 
                                                     return (
                                                         <td
@@ -276,15 +222,15 @@ export function TablePage({ data, month }: TablePageProps) {
                                                                             </div>
                                                                             <div className="flex justify-between gap-4">
                                                                                 <span className="text-muted-foreground">CAC:</span>
-                                                                                <span>{fmtCurrency(cacCost, currency)}</span>
+                                                                                <span>{fmtCurrency(costs.cac, currency)}</span>
                                                                             </div>
                                                                             <div className="flex justify-between gap-4">
                                                                                 <span className="text-muted-foreground">Onboarding:</span>
-                                                                                <span>{fmtCurrency(onboardingTotal, currency)}</span>
+                                                                                <span>{fmtCurrency(costs.onboarding, currency)}</span>
                                                                             </div>
                                                                             <div className="flex justify-between gap-4 font-medium border-t pt-0.5">
                                                                                 <span>Total:</span>
-                                                                                <span>{fmtCurrency(totalCosts, currency)}</span>
+                                                                                <span>{fmtCurrency(costs.total, currency)}</span>
                                                                             </div>
                                                                         </div>
 
@@ -304,10 +250,64 @@ export function TablePage({ data, month }: TablePageProps) {
                                                         </td>
                                                     );
                                                 })}
+                                            {data.revenueStreams &&
+                                                data.revenueStreams.map((stream) => {
+                                                    const cellKey = `acq:${stream.id}:${idx}`;
+                                                    const isExpanded = expandedCells.has(cellKey);
+                                                    const costs = streamAcquisitionCostsAtMonth(stream, idx, data.timeline);
+
+                                                    return (
+                                                        <td
+                                                            key={`${stream.id}-acq`}
+                                                            className="text-center p-0 border-l cursor-pointer"
+                                                            style={{
+                                                                backgroundColor: "hsl(30, 80%, 97%)",
+                                                                borderLeftColor: "hsl(30, 80%, 85%)",
+                                                            }}
+                                                            onClick={() => {
+                                                                const newSet = new Set(expandedCells);
+                                                                if (isExpanded) {
+                                                                    newSet.delete(cellKey);
+                                                                } else {
+                                                                    newSet.add(cellKey);
+                                                                }
+                                                                setExpandedCells(newSet);
+                                                            }}
+                                                        >
+                                                            {isExpanded ? (
+                                                                <div className="p-2">
+                                                                    <div className="space-y-1 text-[10px]">
+                                                                        <div className="font-semibold text-muted-foreground mb-1">
+                                                                            Acquisition Costs:
+                                                                        </div>
+                                                                        <div className="pl-2 space-y-0.5">
+                                                                            <div className="flex justify-between gap-4">
+                                                                                <span className="text-muted-foreground">CAC:</span>
+                                                                                <span>{fmtCurrency(costs.cac, currency)}</span>
+                                                                            </div>
+                                                                            <div className="flex justify-between gap-4">
+                                                                                <span className="text-muted-foreground">Onboarding:</span>
+                                                                                <span>{fmtCurrency(costs.onboarding, currency)}</span>
+                                                                            </div>
+                                                                            <div className="flex justify-between gap-4 font-medium border-t pt-0.5">
+                                                                                <span>Total:</span>
+                                                                                <span>{fmtCurrency(costs.total, currency)}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="p-2 text-xs font-medium">
+                                                                    {costs.total > 0 ? fmtCurrency(costs.total, currency) : "—"}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    );
+                                                })}
                                             {computedTasks.map((task) => {
                                                 const cellKey = `task:${task.id}:${idx}`;
                                                 const isExpanded = expandedCells.has(cellKey);
-                                                const { oneOff, monthly, total } = taskCostAtMonth(task, idx);
+                                                const { oneOff, monthly, total } = taskCostAtMonth(task, idx, start);
 
                                                 return (
                                                     <td
@@ -359,11 +359,190 @@ export function TablePage({ data, month }: TablePageProps) {
                                                     </td>
                                                 );
                                             })}
-                                            <td className="text-right p-2 border-l font-medium">
-                                                {fmtCurrency(row.costs, currency)}
+                                            {(data.costModel?.fixedMonthlyCosts ?? []).map((fixedCost) => {
+                                                const cellKey = `fixed:${fixedCost.id}:${idx}`;
+                                                const isExpanded = expandedCells.has(cellKey);
+                                                const fixedCostData = fixedCostsAtMonth(
+                                                    [fixedCost],
+                                                    idx,
+                                                    computedTasks,
+                                                    start
+                                                );
+                                                const isActive = fixedCostData.costs.length > 0;
+                                                const costValue = isActive ? fixedCostData.total : 0;
+
+                                                return (
+                                                    <td
+                                                        key={fixedCost.id}
+                                                        className="text-center p-0 border-l cursor-pointer"
+                                                        style={{
+                                                            backgroundColor: "hsl(280, 50%, 97%)",
+                                                            borderLeftColor: "hsl(280, 50%, 85%)",
+                                                        }}
+                                                        onClick={() => {
+                                                            const newSet = new Set(expandedCells);
+                                                            if (isExpanded) {
+                                                                newSet.delete(cellKey);
+                                                            } else {
+                                                                newSet.add(cellKey);
+                                                            }
+                                                            setExpandedCells(newSet);
+                                                        }}
+                                                    >
+                                                        {isExpanded && isActive ? (
+                                                            <div className="p-2">
+                                                                <div className="space-y-1 text-[10px]">
+                                                                    <div className="font-semibold text-muted-foreground mb-1">
+                                                                        Fixed Cost:
+                                                                    </div>
+                                                                    <div className="pl-2 space-y-0.5">
+                                                                        <div className="flex justify-between gap-4">
+                                                                            <span className="text-muted-foreground">Monthly:</span>
+                                                                            <span>{fmtCurrency(costValue, currency)}</span>
+                                                                        </div>
+                                                                        {fixedCost.startEventId && (
+                                                                            <div className="text-xs text-muted-foreground mt-1">
+                                                                                Starts: {computedTasks.find((t) => t.id === fixedCost.startEventId)?.computedStart}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="p-2 text-xs font-medium">
+                                                                {isActive ? fmtCurrency(costValue, currency) : "—"}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                );
+                                            })}
+                                            <td
+                                                className="text-right p-0 border-l cursor-pointer font-medium"
+                                                style={{
+                                                    backgroundColor: "hsl(0, 0%, 98%)",
+                                                }}
+                                                onClick={() => {
+                                                    const cellKey = `total-costs:${idx}`;
+                                                    const newSet = new Set(expandedCells);
+                                                    if (expandedCells.has(cellKey)) {
+                                                        newSet.delete(cellKey);
+                                                    } else {
+                                                        newSet.add(cellKey);
+                                                    }
+                                                    setExpandedCells(newSet);
+                                                }}
+                                            >
+                                                {(() => {
+                                                    const cellKey = `total-costs:${idx}`;
+                                                    const isExpanded = expandedCells.has(cellKey);
+                                                    const formula = calculateTotalCosts(data, idx, computedTasks);
+
+                                                    if (isExpanded) {
+                                                        return (
+                                                            <div className="p-2">
+                                                                <div className="space-y-1 text-[10px]">
+                                                                    <div className="font-semibold text-muted-foreground mb-1">
+                                                                        Cost Breakdown:
+                                                                    </div>
+                                                                    {formula.components.map((comp, i) => (
+                                                                        <div key={i} className="space-y-0.5">
+                                                                            <div className="flex justify-between gap-4 font-medium">
+                                                                                <span>{comp.label}:</span>
+                                                                                <span>{fmtCurrency(comp.value, currency)}</span>
+                                                                            </div>
+                                                                            {comp.subComponents && (
+                                                                                <div className="pl-3 space-y-0.5 text-muted-foreground">
+                                                                                    {comp.subComponents.map((sub, j) => (
+                                                                                        <div key={j} className="flex justify-between gap-4">
+                                                                                            <span className="text-[9px]">• {sub.label}:</span>
+                                                                                            <span className="text-[9px]">{fmtCurrency(sub.value, currency)}</span>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                    <div className="border-t mt-1 pt-1">
+                                                                        <div className="flex justify-between gap-4 font-semibold">
+                                                                            <span>Total:</span>
+                                                                            <span>{fmtCurrency(formula.total, currency)}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    } else {
+                                                        return (
+                                                            <div className="p-2 text-xs">
+                                                                {fmtCurrency(row.costs, currency)}
+                                                            </div>
+                                                        );
+                                                    }
+                                                })()}
                                             </td>
-                                            <td className="text-right p-2 border-l font-medium">
-                                                {fmtCurrency(row.profit, currency)}
+                                            <td
+                                                className="text-right p-0 border-l cursor-pointer font-medium"
+                                                style={{
+                                                    backgroundColor: "hsl(0, 0%, 98%)",
+                                                }}
+                                                onClick={() => {
+                                                    const cellKey = `total-margin:${idx}`;
+                                                    const newSet = new Set(expandedCells);
+                                                    if (expandedCells.has(cellKey)) {
+                                                        newSet.delete(cellKey);
+                                                    } else {
+                                                        newSet.add(cellKey);
+                                                    }
+                                                    setExpandedCells(newSet);
+                                                }}
+                                            >
+                                                {(() => {
+                                                    const cellKey = `total-margin:${idx}`;
+                                                    const isExpanded = expandedCells.has(cellKey);
+                                                    const formula = calculateTotalMargin(data, idx, computedTasks, row.revenue);
+
+                                                    if (isExpanded) {
+                                                        return (
+                                                            <div className="p-2">
+                                                                <div className="space-y-1 text-[10px]">
+                                                                    <div className="font-semibold text-muted-foreground mb-1">
+                                                                        Margin Breakdown:
+                                                                    </div>
+                                                                    {formula.components.map((comp, i) => (
+                                                                        <div key={i} className="space-y-0.5">
+                                                                            <div className="flex justify-between gap-4 font-medium">
+                                                                                <span>{comp.label}:</span>
+                                                                                <span>{fmtCurrency(comp.value, currency)}</span>
+                                                                            </div>
+                                                                            {comp.subComponents && (
+                                                                                <div className="pl-3 space-y-0.5 text-muted-foreground">
+                                                                                    {comp.subComponents.map((sub, j) => (
+                                                                                        <div key={j} className="flex justify-between gap-4">
+                                                                                            <span className="text-[9px]">• {sub.label}:</span>
+                                                                                            <span className="text-[9px]">{fmtCurrency(sub.value, currency)}</span>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                    <div className="border-t mt-1 pt-1">
+                                                                        <div className="flex justify-between gap-4 font-semibold">
+                                                                            <span>Total:</span>
+                                                                            <span>{fmtCurrency(formula.total, currency)}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    } else {
+                                                        return (
+                                                            <div className="p-2 text-xs">
+                                                                {fmtCurrency(row.profit, currency)}
+                                                            </div>
+                                                        );
+                                                    }
+                                                })()}
                                             </td>
                                         </tr>
                                     </React.Fragment>

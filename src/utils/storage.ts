@@ -1,5 +1,5 @@
 import type { VentureData, TimelineEvent, Market, RevenueStream } from "../types";
-import { todayISO, addMonths } from "./dateUtils";
+import { todayISO } from "./dateUtils";
 
 const STORAGE_KEY = "venture-planner:v1";
 
@@ -44,40 +44,8 @@ export const DEFAULT: VentureData = {
             dependsOn: ["T2"],
         },
     ],
-    segments: [
-        {
-            id: "M1",
-            name: "Market Segment 1 (UK SMEs)",
-            entry: addMonths(todayISO(), 7),
-            tam: 500000,
-            samPct: 0.2,
-            somPct: 0.05,
-            pricePerUnit: 40,
-            cacPerUnit: 25,
-            rampMonths: 12,
-            notes: "Early adoption via partner channels",
-        },
-        {
-            id: "M2",
-            name: "Market Segment 2 (EU Enterprise)",
-            entry: addMonths(todayISO(), 14),
-            tam: 200000,
-            samPct: 0.15,
-            somPct: 0.03,
-            pricePerUnit: 120,
-            cacPerUnit: 80,
-            rampMonths: 18,
-            notes: "Staggered rollout; higher CAC",
-        },
-    ],
-    opex: [
-        {
-            id: "O1",
-            category: "Core Team",
-            start: todayISO(),
-            monthly: 60000,
-        },
-    ],
+    segments: [],
+    opex: [],
     // New spec-compliant data structures
     timeline: [
         {
@@ -239,50 +207,12 @@ export const DEFAULT: VentureData = {
     ],
 };
 
-// Migrate old revenue stream format to new format
-function migrateRevenueStream(stream: any): any {
-    // Check if already migrated
-    if (stream.unitEconomics?.deliveryCostModel && stream.acquisitionCosts) {
-        return stream;
-    }
-
-    const migrated = { ...stream };
-
-    // Migrate unitEconomics: grossMargin -> deliveryCostModel
-    if (stream.unitEconomics?.grossMargin && !stream.unitEconomics?.deliveryCostModel) {
-        migrated.unitEconomics = {
-            ...stream.unitEconomics,
-            deliveryCostModel: {
-                type: "grossMargin",
-                marginPct: stream.unitEconomics.grossMargin,
-            },
-        };
-        delete migrated.unitEconomics.grossMargin;
-    }
-
-    // Migrate streamCosts -> acquisitionCosts
-    if (stream.streamCosts && !stream.acquisitionCosts) {
-        migrated.acquisitionCosts = {
-            cacPerUnit: stream.streamCosts.cacPerUnit,
-            onboardingCostPerUnit: stream.streamCosts.onboardingCost,
-        };
-        delete migrated.streamCosts;
-    }
-
-    return migrated;
-}
-
 export function loadData(): VentureData {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return DEFAULT;
         const parsed = JSON.parse(raw);
-        if (!parsed?.meta?.start || !Array.isArray(parsed?.tasks) || !Array.isArray(parsed?.segments)) return DEFAULT;
-
-        // Migrate revenue streams if needed
-        if (Array.isArray(parsed.revenueStreams)) {
-            parsed.revenueStreams = parsed.revenueStreams.map(migrateRevenueStream);
-        }
+        if (!parsed?.meta?.start || !Array.isArray(parsed?.tasks)) return DEFAULT;
 
         return parsed;
     } catch {
