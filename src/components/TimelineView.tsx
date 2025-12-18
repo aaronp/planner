@@ -310,7 +310,7 @@ export function TimelineView({
                                                         }}
                                                         title={`${item.stream.name}: ${fmtCurrency(item.revenue, currency)}`}
                                                     >
-                                                        {widthPct > 10 && fmtCurrency(item.revenue, currency)}
+                                                        {widthPct > 5 && fmtCurrency(item.revenue, currency)}
                                                     </div>
                                                 );
                                             })}
@@ -344,7 +344,7 @@ export function TimelineView({
                                                         }}
                                                         title={`${item.task.name}: ${fmtCurrency(item.cost, currency)}`}
                                                     >
-                                                        {widthPct > 10 && fmtCurrency(item.cost, currency)}
+                                                        {widthPct > 5 && fmtCurrency(item.cost, currency)}
                                                     </div>
                                                 );
                                             })}

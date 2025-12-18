@@ -30,6 +30,15 @@ export function TablePage({ data, month }: TablePageProps) {
     // Compute task dates for cost calculations
     const computedTasks = useMemo(() => computeTaskDates(data.tasks, data.meta.start), [data.tasks, data.meta.start]);
 
+    // Calculate cumulative profit for each month
+    const cumulativeProfits = useMemo(() => {
+        let cumulative = 0;
+        return series.map((row) => {
+            cumulative += row.profit;
+            return cumulative;
+        });
+    }, [series]);
+
     // Listen to storage events to reload colors when they change
     React.useEffect(() => {
         const handleStorage = (e: StorageEvent) => {
@@ -97,21 +106,6 @@ export function TablePage({ data, month }: TablePageProps) {
                                             </th>
                                         );
                                     })}
-                                {data.revenueStreams &&
-                                    data.revenueStreams.map((stream) => (
-                                        <th
-                                            key={`${stream.id}-acq`}
-                                            className="text-center p-2 font-medium border-l"
-                                            style={{
-                                                backgroundColor: "hsl(30, 80%, 95%)",
-                                                borderLeftColor: "hsl(30, 80%, 60%)",
-                                                borderLeftWidth: "3px",
-                                            }}
-                                        >
-                                            <div className="text-xs">{stream.name}</div>
-                                            <div className="text-xs font-normal text-muted-foreground mt-1">Acquisition</div>
-                                        </th>
-                                    ))}
                                 {computedTasks.map((task) => (
                                     <th
                                         key={task.id}
@@ -143,6 +137,8 @@ export function TablePage({ data, month }: TablePageProps) {
                                 <th className="text-right p-2 font-medium text-muted-foreground border-l">Total Revenue</th>
                                 <th className="text-right p-2 font-medium text-muted-foreground border-l">Total Costs</th>
                                 <th className="text-right p-2 font-medium text-muted-foreground border-l">Margin</th>
+                                <th className="text-right p-2 font-medium text-muted-foreground border-l">Cumulative Profit</th>
+                                <th className="text-right p-2 font-medium text-muted-foreground border-l">Balance</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -246,60 +242,6 @@ export function TablePage({ data, month }: TablePageProps) {
                                                             ) : (
                                                                 <div className="p-2 text-xs font-medium">
                                                                     {fmtCurrency(margin, currency)}
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                    );
-                                                })}
-                                            {data.revenueStreams &&
-                                                data.revenueStreams.map((stream) => {
-                                                    const cellKey = `acq:${stream.id}:${idx}`;
-                                                    const isExpanded = expandedCells.has(cellKey);
-                                                    const costs = streamAcquisitionCostsAtMonth(stream, idx, data.timeline);
-
-                                                    return (
-                                                        <td
-                                                            key={`${stream.id}-acq`}
-                                                            className="text-center p-0 border-l cursor-pointer"
-                                                            style={{
-                                                                backgroundColor: "hsl(30, 80%, 97%)",
-                                                                borderLeftColor: "hsl(30, 80%, 85%)",
-                                                            }}
-                                                            onClick={() => {
-                                                                const newSet = new Set(expandedCells);
-                                                                if (isExpanded) {
-                                                                    newSet.delete(cellKey);
-                                                                } else {
-                                                                    newSet.add(cellKey);
-                                                                }
-                                                                setExpandedCells(newSet);
-                                                            }}
-                                                        >
-                                                            {isExpanded ? (
-                                                                <div className="p-2">
-                                                                    <div className="space-y-1 text-[10px]">
-                                                                        <div className="font-semibold text-muted-foreground mb-1">
-                                                                            Acquisition Costs:
-                                                                        </div>
-                                                                        <div className="pl-2 space-y-0.5">
-                                                                            <div className="flex justify-between gap-4">
-                                                                                <span className="text-muted-foreground">CAC:</span>
-                                                                                <span>{fmtCurrency(costs.cac, currency)}</span>
-                                                                            </div>
-                                                                            <div className="flex justify-between gap-4">
-                                                                                <span className="text-muted-foreground">Onboarding:</span>
-                                                                                <span>{fmtCurrency(costs.onboarding, currency)}</span>
-                                                                            </div>
-                                                                            <div className="flex justify-between gap-4 font-medium border-t pt-0.5">
-                                                                                <span>Total:</span>
-                                                                                <span>{fmtCurrency(costs.total, currency)}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="p-2 text-xs font-medium">
-                                                                    {costs.total > 0 ? fmtCurrency(costs.total, currency) : "—"}
                                                                 </div>
                                                             )}
                                                         </td>
@@ -548,12 +490,32 @@ export function TablePage({ data, month }: TablePageProps) {
                                                         );
                                                     } else {
                                                         return (
-                                                            <div className="p-2 text-xs">
+                                                            <div className="p-2 text-xs whitespace-nowrap">
                                                                 {fmtCurrency(row.profit, currency)}
                                                             </div>
                                                         );
                                                     }
                                                 })()}
+                                            </td>
+                                            <td
+                                                className="text-right p-2 border-l font-medium"
+                                                style={{
+                                                    backgroundColor: "hsl(142, 70%, 97%)",
+                                                }}
+                                            >
+                                                <div className="text-xs whitespace-nowrap">
+                                                    {fmtCurrency(cumulativeProfits[idx], currency)}
+                                                </div>
+                                            </td>
+                                            <td
+                                                className="text-right p-2 border-l font-medium"
+                                                style={{
+                                                    backgroundColor: "hsl(220, 70%, 97%)",
+                                                }}
+                                            >
+                                                <div className="text-xs whitespace-nowrap">
+                                                    {fmtCurrency(data.meta.initialReserve + cumulativeProfits[idx], currency)}
+                                                </div>
                                             </td>
                                         </tr>
                                     </React.Fragment>
