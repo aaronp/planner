@@ -90,18 +90,19 @@ export default function App() {
     return (
         <BrowserRouter basename="/planner">
             <div className="p-4 md:p-6 max-w-[1400px] mx-auto">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                {/* <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
                         <h1 className="text-2xl font-semibold">{data.meta.name} Planner</h1>
                         <p className="text-sm text-muted-foreground">venture modelling: tasks + market segments + snapshot financials.</p>
                     </div>
-                </div>
+                </div> */}
 
                 <div className="mt-4 grid gap-4">
                     <Card className="rounded-2xl shadow-sm">
                         <CardContent className="p-4">
                             <div className="flex items-center justify-between mb-3">
-                                <div className="text-sm font-medium">Plan Details</div>
+                                {/* <div className="text-sm font-medium">Plan Details</div> */}
+                                <h1 className="text-2xl font-semibold">{data.meta.name}</h1>
                                 <Button
                                     variant="ghost"
                                     size="sm"

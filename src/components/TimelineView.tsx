@@ -54,6 +54,38 @@ export function TimelineView({
         return (active ? t.costMonthly : 0) + oneOff;
     };
 
+    // Calculate cost for a specific task at a specific month index
+    const taskCostAtMonth = (t: ComputedTask, m: number) => {
+        const monthDate = addMonths(start, m);
+        const active = isWithin(monthDate, t.computedStart, t.computedEnd);
+        const oneOff = monthIndexFromStart(start, t.computedStart) === m ? t.costOneOff : 0;
+        return (active ? t.costMonthly : 0) + oneOff;
+    };
+
+    // Calculate cumulative costs to date for a task
+    const taskCostsToDate = (t: ComputedTask) => {
+        let total = 0;
+        for (let m = 0; m <= month; m++) {
+            total += taskCostAtMonth(t, m);
+        }
+        return total;
+    };
+
+    // Find max cost across all tasks and months for proportional sizing
+    const maxMonthlyCost = useMemo(() => {
+        let max = 0;
+        for (const t of computedTasks) {
+            for (let m = 0; m < horizonMonths; m++) {
+                const monthDate = addMonths(start, m);
+                const active = isWithin(monthDate, t.computedStart, t.computedEnd);
+                const oneOff = monthIndexFromStart(start, t.computedStart) === m ? t.costOneOff : 0;
+                const cost = (active ? t.costMonthly : 0) + oneOff;
+                if (cost > max) max = cost;
+            }
+        }
+        return max || 1; // Avoid division by zero
+    }, [computedTasks, horizonMonths, start]);
+
     const segRevenueAtCursor = (s: any) => segmentActiveUnitsAtMonth(s, start, month) * s.pricePerUnit;
 
     return (
@@ -148,21 +180,38 @@ export function TimelineView({
                                                 {months.map((m) => {
                                                     const inside = m >= s && m <= e;
                                                     const isCursor = m === month;
+                                                    const monthlyCost = taskCostAtMonth(t, m);
+                                                    const costPct = maxMonthlyCost > 0 ? (monthlyCost / maxMonthlyCost) * 100 : 0;
+                                                    const hasContent = inside && monthlyCost > 0;
+
                                                     return (
-                                                        <div key={m} className={`border-b ${isCursor ? "bg-muted/60" : ""}`}>
-                                                            {inside ? (
-                                                                <div
-                                                                    className={`h-full m-[3px] rounded-lg ${active ? "bg-primary/25" : "bg-muted"} ${blocked ? "ring-1 ring-destructive/60" : ""}`}
-                                                                    title={`${t.name}\n${t.computedStart} → ${t.computedEnd || "ongoing"}\nDuration: ${t.duration || "ongoing"}\nDepends: ${t.dependsOn.join(", ") || "—"}`}
-                                                                />
+                                                        <div key={m} className={`border-b ${isCursor ? "bg-muted/60" : ""} relative`}>
+                                                            {hasContent ? (
+                                                                <div className="h-full flex flex-col justify-end p-[3px]">
+                                                                    <div
+                                                                        className={`rounded-lg ${active ? "bg-primary/25" : "bg-muted"} ${blocked ? "ring-1 ring-destructive/60" : ""} relative flex items-end justify-center`}
+                                                                        style={{ height: `${Math.max(20, costPct)}%` }}
+                                                                        title={`${t.name}\n${t.computedStart} → ${t.computedEnd || "ongoing"}\nCost this month: ${fmtCurrency(monthlyCost, currency)}\nDuration: ${t.duration || "ongoing"}\nDepends: ${t.dependsOn.join(", ") || "—"}`}
+                                                                    >
+                                                                        <div
+                                                                            className="text-[8px] text-muted-foreground/80 font-medium pb-[2px]"
+                                                                            style={{
+                                                                                writingMode: "vertical-rl",
+                                                                                transform: "rotate(180deg)",
+                                                                            }}
+                                                                        >
+                                                                            {fmtCompact(monthlyCost)}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
                                                             ) : null}
                                                         </div>
                                                     );
                                                 })}
 
                                                 <div className="sticky right-0 bg-background z-10 p-2 border-b text-right">
-                                                    <div className="text-xs text-muted-foreground">Cost (now)</div>
-                                                    <div className="text-sm font-medium">{fmtCurrency(nowCost, currency)}</div>
+                                                    <div className="text-xs text-muted-foreground">Costs to Date</div>
+                                                    <div className="text-sm font-medium">{fmtCurrency(taskCostsToDate(t), currency)}</div>
                                                 </div>
                                             </div>
                                         );
