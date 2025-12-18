@@ -118,7 +118,7 @@ export function computeSeries(
     taskMultipliers: Record<string, number> = {},
     fixedCostMultipliers: Record<string, number> = {},
     revenueStreamMultipliers: Record<string, number> = {},
-    distributionSelection: DistributionSelection = "mode"
+    streamDistributions: Record<string, DistributionSelection> = {}
 ) {
     const { start, horizonMonths } = data.meta;
     const months = Array.from({ length: Math.max(1, horizonMonths) }, (_, i) => i);
@@ -184,8 +184,8 @@ export function computeSeries(
         if (data.revenueStreams) {
             for (const stream of data.revenueStreams) {
                 const multiplier = revenueStreamMultipliers[stream.id] ?? 1;
-                const streamRevenue = streamRevenueAtMonth(stream, m, data.timeline, multiplier, distributionSelection);
-                const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline, multiplier, distributionSelection);
+                const streamRevenue = streamRevenueAtMonth(stream, m, data.timeline, multiplier, streamDistributions);
+                const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline, multiplier, streamDistributions);
                 revenue += (streamRevenue - acquisitionCosts.total);
             }
         }

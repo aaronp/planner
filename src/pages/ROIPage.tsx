@@ -20,7 +20,7 @@ type ROIPageProps = {
 };
 
 export function ROIPage({ data, month }: ROIPageProps) {
-    const { multipliers, distributionSelection } = useRisk();
+    const { multipliers, streamDistributions } = useRisk();
     const { currency, initialReserve } = data.meta;
     const [revenueMultiple, setRevenueMultiple] = useState(5);
     const [ebitdaMultiple, setEbitdaMultiple] = useState(8);
@@ -29,8 +29,8 @@ export function ROIPage({ data, month }: ROIPageProps) {
     const [isRunningSimulation, setIsRunningSimulation] = useState(false);
 
     const series = useMemo(
-        () => computeSeries(data, multipliers.tasks, multipliers.fixedCosts, multipliers.revenueStreams, distributionSelection),
-        [data, multipliers, distributionSelection]
+        () => computeSeries(data, multipliers.tasks, multipliers.fixedCosts, multipliers.revenueStreams, streamDistributions),
+        [data, multipliers, streamDistributions]
     );
     const currentSnapshot = series[Math.min(series.length - 1, Math.max(0, month))] ?? series[0];
 

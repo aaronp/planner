@@ -45,7 +45,7 @@ export function streamUnitsAtMonth(
     stream: RevenueStream,
     monthIndex: number,
     timeline: VentureData["timeline"],
-    distributionSelection: DistributionSelection = "mode"
+    streamDistributions: Record<string, DistributionSelection> = {}
 ): number {
     // Check if stream has started (unlockEventId)
     const unlockEvent = timeline?.find((t) => t.id === stream.unlockEventId);
@@ -73,6 +73,7 @@ export function streamUnitsAtMonth(
     const monthsSinceStart = monthIndex - startMonth;
     const { initialUnits, acquisitionRate, maxUnits, churnRate, expansionRate } = stream.adoptionModel;
 
+    const distributionSelection = streamDistributions[stream.id] ?? "mode";
     const acqRate = getDistributionMode(acquisitionRate, distributionSelection);
     const churn = getDistributionMode(churnRate, distributionSelection) || 0;
     const expansion = getDistributionMode(expansionRate, distributionSelection) || 0;
@@ -99,9 +100,10 @@ export function streamRevenueAtMonth(
     monthIndex: number,
     timeline: VentureData["timeline"],
     streamMultiplier: number = 1,
-    distributionSelection: DistributionSelection = "mode"
+    streamDistributions: Record<string, DistributionSelection> = {}
 ): number {
-    const units = streamUnitsAtMonth(stream, monthIndex, timeline, distributionSelection);
+    const units = streamUnitsAtMonth(stream, monthIndex, timeline, streamDistributions);
+    const distributionSelection = streamDistributions[stream.id] ?? "mode";
     const priceMode = getDistributionMode(stream.unitEconomics.pricePerUnit, distributionSelection);
     return units * priceMode * streamMultiplier;
 }
@@ -114,12 +116,13 @@ export function streamAcquisitionCostsAtMonth(
     monthIndex: number,
     timeline: VentureData["timeline"],
     streamMultiplier: number = 1,
-    distributionSelection: DistributionSelection = "mode"
+    streamDistributions: Record<string, DistributionSelection> = {}
 ): { cac: number; onboarding: number; total: number } {
-    const units = streamUnitsAtMonth(stream, monthIndex, timeline, distributionSelection);
-    const unitsLastMonth = monthIndex > 0 ? streamUnitsAtMonth(stream, monthIndex - 1, timeline, distributionSelection) : 0;
+    const units = streamUnitsAtMonth(stream, monthIndex, timeline, streamDistributions);
+    const unitsLastMonth = monthIndex > 0 ? streamUnitsAtMonth(stream, monthIndex - 1, timeline, streamDistributions) : 0;
     const newUnits = Math.max(0, units - unitsLastMonth);
 
+    const distributionSelection = streamDistributions[stream.id] ?? "mode";
     const cacPerUnit = getDistributionMode(stream.acquisitionCosts?.cacPerUnit, distributionSelection);
     const onboardingPerUnit = getDistributionMode(stream.acquisitionCosts?.onboardingCostPerUnit, distributionSelection);
 
@@ -141,10 +144,10 @@ export function streamMarginAtMonth(
     monthIndex: number,
     timeline: VentureData["timeline"],
     streamMultiplier: number = 1,
-    distributionSelection: DistributionSelection = "mode"
+    streamDistributions: Record<string, DistributionSelection> = {}
 ): number {
-    const revenue = streamRevenueAtMonth(stream, monthIndex, timeline, streamMultiplier, distributionSelection);
-    const costs = streamAcquisitionCostsAtMonth(stream, monthIndex, timeline, streamMultiplier, distributionSelection).total;
+    const revenue = streamRevenueAtMonth(stream, monthIndex, timeline, streamMultiplier, streamDistributions);
+    const costs = streamAcquisitionCostsAtMonth(stream, monthIndex, timeline, streamMultiplier, streamDistributions).total;
     return revenue - costs;
 }
 

@@ -61,7 +61,7 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
 }
 
 function AppContent() {
-    const { multipliers, setMultipliers, distributionSelection, setDistributionSelection } = useRisk();
+    const { multipliers, setMultipliers, distributionSelection, setDistributionSelection, streamDistributions, setStreamDistributions } = useRisk();
 
     const [data, setData] = useState<VentureData>(() => {
         if (typeof window === "undefined") return DEFAULT;
@@ -82,8 +82,8 @@ function AppContent() {
 
     const currency = data.meta.currency;
     const series = useMemo(
-        () => computeSeries(data, multipliers.tasks, multipliers.fixedCosts, multipliers.revenueStreams, distributionSelection),
-        [data, multipliers, distributionSelection]
+        () => computeSeries(data, multipliers.tasks, multipliers.fixedCosts, multipliers.revenueStreams, streamDistributions),
+        [data, multipliers, streamDistributions]
     );
     const snap = series[Math.min(series.length - 1, Math.max(0, month))] ?? series[0];
 
@@ -198,6 +198,8 @@ function AppContent() {
                                         onMultipliersChange={setMultipliers}
                                         distributionSelection={distributionSelection}
                                         onDistributionSelectionChange={setDistributionSelection}
+                                        streamDistributions={streamDistributions}
+                                        onStreamDistributionsChange={setStreamDistributions}
                                     />
                                 </>
                             )}

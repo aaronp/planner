@@ -26,7 +26,7 @@ type GraphPageProps = {
 };
 
 export function GraphPage({ data }: GraphPageProps) {
-    const { multipliers, distributionSelection } = useRisk();
+    const { multipliers, streamDistributions } = useRisk();
     const currency = data.meta.currency;
     const start = data.meta.start;
     const horizonMonths = data.meta.horizonMonths;
@@ -82,8 +82,8 @@ export function GraphPage({ data }: GraphPageProps) {
             if (data.revenueStreams) {
                 for (const stream of data.revenueStreams) {
                     const streamMultiplier = multipliers.revenueStreams[stream.id] ?? 1;
-                    const grossRevenue = streamRevenueAtMonth(stream, m, data.timeline, streamMultiplier, distributionSelection);
-                    const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline, streamMultiplier, distributionSelection);
+                    const grossRevenue = streamRevenueAtMonth(stream, m, data.timeline, streamMultiplier, streamDistributions);
+                    const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline, streamMultiplier, streamDistributions);
                     const netRevenue = grossRevenue - acquisitionCosts.total;
                     row[stream.id] = netRevenue;
                     totalNetRevenue += netRevenue;
@@ -117,7 +117,7 @@ export function GraphPage({ data }: GraphPageProps) {
 
             return row;
         });
-    }, [data, horizonMonths, start, computedTasks, multipliers, distributionSelection]);
+    }, [data, horizonMonths, start, computedTasks, multipliers, streamDistributions]);
 
     return (
         <div className="grid gap-4">

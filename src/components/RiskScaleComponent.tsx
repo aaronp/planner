@@ -28,6 +28,8 @@ export function RiskScaleComponent({
     onMultipliersChange,
     distributionSelection,
     onDistributionSelectionChange,
+    streamDistributions,
+    onStreamDistributionsChange,
 }: RiskScaleComponentProps) {
     const updateTaskMultiplier = (taskId: string, value: number) => {
         onMultipliersChange({
@@ -50,6 +52,13 @@ export function RiskScaleComponent({
         });
     };
 
+    const updateStreamDistribution = (streamId: string, selection: DistributionSelection) => {
+        onStreamDistributionsChange({
+            ...streamDistributions,
+            [streamId]: selection,
+        });
+    };
+
     return (
         <div className="grid gap-4">
             <Card className="rounded-2xl shadow-sm">
@@ -57,44 +66,50 @@ export function RiskScaleComponent({
                     <CardTitle className="text-base">Risk Scenario Adjustments</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    {/* Distribution Selection for Revenue Streams */}
-                    <div>
-                        <Label className="text-sm font-medium">Revenue Stream Scenario</Label>
-                        <Select value={distributionSelection} onValueChange={(v) => onDistributionSelectionChange(v as DistributionSelection)}>
-                            <SelectTrigger className="rounded-2xl mt-2">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="min">Bear Case (Min)</SelectItem>
-                                <SelectItem value="mode">Expected Case (Mode)</SelectItem>
-                                <SelectItem value="max">Bull Case (Max)</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Selects which value to use from distribution ranges (CAC, acquisition rate, etc.)
-                        </p>
-                    </div>
-
                     {/* Revenue Streams */}
                     {data.revenueStreams && data.revenueStreams.length > 0 && (
-                        <div className="space-y-3">
-                            <Label className="text-sm font-medium">Revenue Stream Multipliers</Label>
+                        <div className="space-y-4">
+                            <Label className="text-sm font-medium">Revenue Streams</Label>
                             {data.revenueStreams.map((stream) => {
                                 const multiplier = multipliers.revenueStreams[stream.id] ?? 1;
+                                const distribution = streamDistributions[stream.id] ?? "mode";
                                 return (
-                                    <div key={stream.id} className="space-y-2">
+                                    <div key={stream.id} className="space-y-3 p-3 border rounded-2xl">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-sm">{stream.name}</span>
+                                            <span className="text-sm font-medium">{stream.name}</span>
                                             <span className="text-sm font-medium tabular-nums">{multiplier.toFixed(1)}x</span>
                                         </div>
-                                        <Slider
-                                            value={[multiplier]}
-                                            min={0}
-                                            max={5}
-                                            step={0.1}
-                                            onValueChange={(v) => updateRevenueStreamMultiplier(stream.id, v[0] ?? 1)}
-                                            className="w-full"
-                                        />
+
+                                        <div className="grid md:grid-cols-2 gap-3">
+                                            <div>
+                                                <Label className="text-xs text-muted-foreground">Scenario</Label>
+                                                <Select
+                                                    value={distribution}
+                                                    onValueChange={(v) => updateStreamDistribution(stream.id, v as DistributionSelection)}
+                                                >
+                                                    <SelectTrigger className="rounded-2xl mt-1 h-8 text-xs">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="min">Bear (Min)</SelectItem>
+                                                        <SelectItem value="mode">Expected (Mode)</SelectItem>
+                                                        <SelectItem value="max">Bull (Max)</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
+                                            <div>
+                                                <Label className="text-xs text-muted-foreground">Multiplier</Label>
+                                                <Slider
+                                                    value={[multiplier]}
+                                                    min={0}
+                                                    max={5}
+                                                    step={0.1}
+                                                    onValueChange={(v) => updateRevenueStreamMultiplier(stream.id, v[0] ?? 1)}
+                                                    className="w-full mt-3"
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
                                 );
                             })}

@@ -52,7 +52,7 @@ export function TimelineView({
     data: VentureData;
     month: number;
 }) {
-    const { multipliers, distributionSelection } = useRisk();
+    const { multipliers, streamDistributions } = useRisk();
     const { start, horizonMonths, currency } = data.meta;
     // Track localStorage version to force reload when colors change
     const [storageVersion, setStorageVersion] = useState(0);
@@ -64,8 +64,8 @@ export function TimelineView({
     const monthISO = addMonths(start, month);
 
     const series = useMemo(
-        () => computeSeries(data, multipliers.tasks, multipliers.fixedCosts, multipliers.revenueStreams, distributionSelection),
-        [data, multipliers, distributionSelection]
+        () => computeSeries(data, multipliers.tasks, multipliers.fixedCosts, multipliers.revenueStreams, streamDistributions),
+        [data, multipliers, streamDistributions]
     );
     const snap = series[Math.min(series.length - 1, Math.max(0, month))] ?? series[0];
 
@@ -146,12 +146,12 @@ export function TimelineView({
 
     // Use centralized logic functions with multipliers and distribution selection
     const streamUnitsAtMonth = (stream: any, m: number) => {
-        return streamUnitsAtMonthUtil(stream, m, data.timeline, distributionSelection);
+        return streamUnitsAtMonthUtil(stream, m, data.timeline, streamDistributions);
     };
 
     const streamRevenueAtMonth = (stream: any, m: number) => {
         const streamMultiplier = multipliers.revenueStreams[stream.id] ?? 1;
-        return streamRevenueAtMonthUtil(stream, m, data.timeline, streamMultiplier, distributionSelection);
+        return streamRevenueAtMonthUtil(stream, m, data.timeline, streamMultiplier, streamDistributions);
     };
 
     // Calculate cumulative revenue to date for a revenue stream
