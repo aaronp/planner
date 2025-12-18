@@ -1,13 +1,14 @@
-import type { ISODate } from "../types";
+import type { ISODate, Task } from "../types";
 import { addMonths } from "./dateUtils";
 
 /**
- * Parse duration string (e.g., "2w", "3m", "1y", "5d") and add to a date
+ * Parse duration string (e.g., "2w", "3m", "1y", "5d") and add or subtract from a date
  * @param isoDate - Starting date in ISO format
  * @param duration - Duration string (e.g., "2w", "3m")
- * @returns New date after adding duration, or undefined if duration is invalid
+ * @param subtract - If true, subtract the duration instead of adding
+ * @returns New date after adding/subtracting duration, or undefined if duration is invalid
  */
-export function addDuration(isoDate: ISODate, duration: string): ISODate | undefined {
+export function addDuration(isoDate: ISODate, duration: string, subtract = false): ISODate | undefined {
     // Empty duration is valid (means ongoing task)
     if (!duration) return undefined;
 
@@ -17,7 +18,7 @@ export function addDuration(isoDate: ISODate, duration: string): ISODate | undef
         return undefined;
     }
 
-    const value = parseInt(match[1]!, 10);
+    const value = parseInt(match[1]!, 10) * (subtract ? -1 : 1);
     const unit = match[2]!;
 
     const date = new Date(isoDate + "T00:00:00Z");
@@ -43,17 +44,18 @@ export function addDuration(isoDate: ISODate, duration: string): ISODate | undef
 }
 
 /**
- * Parse a dependency string (e.g., "T1", "T1e+2w", "T2s+3d")
+ * Parse a dependency string (e.g., "T1", "T1e+2w", "T2s+3d", "T3-2m")
  * @param depStr - Dependency string
  * @returns Parsed dependency info, or null if invalid
  */
 export function parseDependency(depStr: string): {
     taskId: string;
     anchor: "start" | "end"; // Default to "end" if not specified
+    operator?: "+" | "-"; // Whether to add or subtract offset
     offset?: string; // Duration offset (e.g., "2w")
 } | null {
-    // Match patterns like: T1, T1s, T1e, T1+2w, T1e+2w, T1s+3d
-    const match = depStr.match(/^([a-zA-Z0-9_]+)([se])?(?:\+(.+))?$/);
+    // Match patterns like: T1, T1s, T1e, T1+2w, T1e+2w, T1s+3d, T3-2m, T1e-1w
+    const match = depStr.match(/^([a-zA-Z0-9_]+)([se])?(?:([+-])(.+))?$/);
 
     if (!match) {
         return null;
@@ -61,11 +63,13 @@ export function parseDependency(depStr: string): {
 
     const taskId = match[1]!;
     const anchorChar = match[2];
-    const offset = match[3];
+    const operator = match[3] as "+" | "-" | undefined;
+    const offset = match[4];
 
     return {
         taskId,
         anchor: anchorChar === "s" ? "start" : "end", // Default to "end"
+        operator,
         offset,
     };
 }
@@ -88,6 +92,7 @@ export function isValidDuration(duration: string): boolean {
 export function isValidDependency(dep: string): boolean {
     try {
         const parsed = parseDependency(dep);
+        if (!parsed) return false;
         // If there's an offset, validate it's a valid duration
         if (parsed.offset) {
             return isValidDuration(parsed.offset);
@@ -96,4 +101,52 @@ export function isValidDependency(dep: string): boolean {
     } catch {
         return false;
     }
+}
+
+/**
+ * Calculate the actual start date for a task based on its dependencies
+ * @param task - The task to calculate start date for
+ * @param allTasks - All tasks in the project (to look up dependencies)
+ * @returns Calculated start date, or the task's own start date if no valid dependencies
+ */
+export function calculateTaskStartDate(task: Task, allTasks: Task[]): ISODate {
+    // If no dependencies, use the task's own start date
+    if (!task.dependsOn || task.dependsOn.length === 0) {
+        return task.start || "";
+    }
+
+    // Find the latest date from all dependencies
+    let latestDate: ISODate | null = null;
+
+    for (const depStr of task.dependsOn) {
+        const parsed = parseDependency(depStr);
+        if (!parsed) continue; // Skip invalid dependencies
+
+        // Find the dependent task
+        const depTask = allTasks.find((t) => t.id === parsed.taskId);
+        if (!depTask || !depTask.start) continue; // Skip if task not found
+
+        // Get the anchor date (start or end of dependent task)
+        let anchorDate: ISODate = depTask.start;
+        if (parsed.anchor === "end" && depTask.duration) {
+            // Calculate end date
+            const endDate = addDuration(depTask.start, depTask.duration);
+            if (endDate) anchorDate = endDate;
+        }
+
+        // Apply offset if specified
+        let resultDate = anchorDate;
+        if (parsed.offset && parsed.operator) {
+            const offsetResult = addDuration(anchorDate, parsed.offset, parsed.operator === "-");
+            if (offsetResult) resultDate = offsetResult;
+        }
+
+        // Track the latest date
+        if (!latestDate || resultDate > latestDate) {
+            latestDate = resultDate;
+        }
+    }
+
+    // Return the latest date from dependencies, or fallback to task's own start date
+    return latestDate || task.start || "";
 }

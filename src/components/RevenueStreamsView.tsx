@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -36,13 +36,6 @@ function clamp(n: number, lo: number, hi: number) {
     return Math.max(lo, Math.min(hi, n));
 }
 
-function round(x: number) {
-    const abs = Math.abs(x);
-    const places = abs >= 1000 ? 0 : abs >= 100 ? 1 : abs >= 10 ? 2 : 3;
-    const p = Math.pow(10, places);
-    return Math.round(x * p) / p;
-}
-
 function createSimpleDistribution(value: number): Distribution {
     return { type: "triangular", min: value, mode: value, max: value };
 }
@@ -70,7 +63,7 @@ function HelpLabel({ label, help }: { label: string; help: string }) {
     );
 }
 
-function computeWarnings(stream: RevenueStream, horizonMonths: number): Warning[] {
+function computeWarnings(stream: RevenueStream): Warning[] {
     const w: Warning[] = [];
 
     // Check delivery cost model
@@ -139,25 +132,51 @@ function DraggableTimeline({
 }) {
     const trackRef = useRef<HTMLDivElement | null>(null);
     const [draggingId, setDraggingId] = useState<string | null>(null);
+    const draggingIdRef = useRef<string | null>(null);
+    const grabOffsetMonthsRef = useRef<number>(0);
 
-    function monthFromClientX(clientX: number) {
-        if (!trackRef.current) return 0;
-        const rect = trackRef.current.getBoundingClientRect();
-        const x = clamp(clientX - rect.left, 0, rect.width);
-        return clamp(Math.round((x / rect.width) * horizonMonths), 0, horizonMonths);
-    }
+    const monthFromClientX = useCallback(
+        (clientX: number) => {
+            if (!trackRef.current) return 0;
+            const rect = trackRef.current.getBoundingClientRect();
+            const x = clamp(clientX - rect.left, 0, rect.width);
+            return clamp(Math.round((x / rect.width) * horizonMonths), 0, horizonMonths);
+        },
+        [horizonMonths]
+    );
 
+    // Set up drag handlers when dragging starts
     useEffect(() => {
-        if (!draggingId) return;
-        const onMove = (e: PointerEvent) => onChangeStartMonth(draggingId, monthFromClientX(e.clientX));
-        const onUp = () => setDraggingId(null);
-        window.addEventListener("pointermove", onMove);
-        window.addEventListener("pointerup", onUp);
-        return () => {
-            window.removeEventListener("pointermove", onMove);
-            window.removeEventListener("pointerup", onUp);
+        if (!draggingId) {
+            draggingIdRef.current = null;
+            grabOffsetMonthsRef.current = 0;
+            return;
+        }
+
+        draggingIdRef.current = draggingId;
+
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!draggingIdRef.current) return;
+            e.preventDefault();
+            const raw = monthFromClientX(e.clientX) - (grabOffsetMonthsRef.current || 0);
+            const newMonth = clamp(raw, 0, horizonMonths);
+            onChangeStartMonth(draggingIdRef.current, newMonth);
         };
-    }, [draggingId, horizonMonths, onChangeStartMonth]);
+
+        const handleMouseUp = () => {
+            setDraggingId(null);
+            draggingIdRef.current = null;
+            grabOffsetMonthsRef.current = 0;
+        };
+
+        document.addEventListener("mousemove", handleMouseMove);
+        document.addEventListener("mouseup", handleMouseUp);
+
+        return () => {
+            document.removeEventListener("mousemove", handleMouseMove);
+            document.removeEventListener("mouseup", handleMouseUp);
+        };
+    }, [draggingId, monthFromClientX, onChangeStartMonth]);
 
     // Get month for stream
     const getStreamMonth = (stream: RevenueStream) => {
@@ -165,6 +184,9 @@ function DraggableTimeline({
         const event = timeline.find((t) => t.id === stream.unlockEventId);
         return event?.month ?? 0;
     };
+
+    // Calculate dynamic height based on number of streams
+    const timelineHeight = Math.max(112, streams.length * 44 + 24); // 44px per stream + padding
 
     return (
         <Card className="rounded-2xl shadow-sm">
@@ -180,7 +202,11 @@ function DraggableTimeline({
                 </div>
             </CardHeader>
             <CardContent>
-                <div ref={trackRef} className="relative h-28 w-full rounded-2xl border bg-background overflow-hidden">
+                <div
+                    ref={trackRef}
+                    className="relative w-full rounded-2xl border bg-background overflow-visible"
+                    style={{ height: `${timelineHeight}px` }}
+                >
                     {/* Month grid lines */}
                     <div className="absolute inset-0 pointer-events-none opacity-60">
                         {Array.from({ length: horizonMonths + 1 }).map((_, i) => (
@@ -199,13 +225,14 @@ function DraggableTimeline({
                             const month = getStreamMonth(s);
                             const leftPct = (month / horizonMonths) * 100;
                             const color = (s as StreamWithColor).color || "#4f46e5";
+                            const isDragging = draggingId === s.id;
+
                             return (
-                                <motion.div
+                                <div
                                     key={s.id}
-                                    initial={{ opacity: 0, y: 4 }}
-                                    animate={{ opacity: 1, y: 0 }}
                                     className={
-                                        "absolute h-10 rounded-2xl border flex items-center justify-between px-3 cursor-grab active:cursor-grabbing select-none " +
+                                        "absolute h-10 rounded-2xl border flex items-center justify-between px-3 select-none " +
+                                        (isDragging ? "cursor-grabbing" : "cursor-grab") + " " +
                                         (isSel ? "ring-2 ring-offset-2" : "")
                                     }
                                     style={{
@@ -214,21 +241,26 @@ function DraggableTimeline({
                                         width: "min(520px, 70%)",
                                         background: `${color}15`,
                                         borderColor: `${color}55`,
+                                        transition: isDragging ? "none" : "all 0.2s",
                                     }}
-                                    onClick={() => onSelect(s.id)}
-                                    onPointerDown={(e) => {
+                                    onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        // Avoid a "jump" by preserving where in the bar the user grabbed (in months).
+                                        // We compute an offset so the bar tracks the cursor from the grab point, not from its left edge.
+                                        const downMonth = monthFromClientX(e.clientX);
+                                        const currentMonth = getStreamMonth(s);
+                                        grabOffsetMonthsRef.current = downMonth - currentMonth;
                                         setDraggingId(s.id);
-                                        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                                        onChangeStartMonth(s.id, monthFromClientX(e.clientX));
+                                        onSelect(s.id);
                                     }}
                                 >
-                                    <div className="flex items-center gap-2 min-w-0">
+                                    <div className="flex items-center gap-2 min-w-0 pointer-events-none">
                                         <div className="h-3 w-3 rounded-full" style={{ background: color }} />
                                         <div className="truncate text-sm font-medium">{s.name}</div>
                                         <Badge variant="outline">M{month}</Badge>
                                     </div>
-                                    <GripVertical className="h-4 w-4 text-muted-foreground" />
-                                </motion.div>
+                                    <GripVertical className="h-4 w-4 text-muted-foreground pointer-events-none" />
+                                </div>
                             );
                         })}
                     </div>
@@ -350,7 +382,6 @@ function WarningStrip({ warnings }: { warnings: Warning[] }) {
 function StreamEditor({
     stream,
     onUpdate,
-    horizonMonths,
     markets,
     timeline,
     streamColor,
@@ -358,13 +389,12 @@ function StreamEditor({
 }: {
     stream: RevenueStream;
     onUpdate: (s: RevenueStream) => void;
-    horizonMonths: number;
     markets: Market[];
     timeline: TimelineEvent[];
     streamColor: string;
     onColorChange: (color: string) => void;
 }) {
-    const warnings = useMemo(() => computeWarnings(stream, horizonMonths), [stream, horizonMonths]);
+    const warnings = useMemo(() => computeWarnings(stream), [stream]);
     const selectedMarket = markets.find((m) => m.id === stream.marketId);
 
     return (
@@ -403,8 +433,9 @@ function StreamEditor({
                 <WarningStrip warnings={warnings} />
 
                 <Tabs defaultValue="overview" className="w-full">
-                    <TabsList className="grid w-full grid-cols-5 rounded-2xl">
+                    <TabsList className="grid w-full grid-cols-6 rounded-2xl">
                         <TabsTrigger value="overview">Overview</TabsTrigger>
+                        <TabsTrigger value="assumptions">Assumptions & Risks</TabsTrigger>
                         <TabsTrigger value="market">Market</TabsTrigger>
                         <TabsTrigger value="pricing">Pricing</TabsTrigger>
                         <TabsTrigger value="growth">Growth</TabsTrigger>
@@ -485,7 +516,49 @@ function StreamEditor({
                         </div>
                     </TabsContent>
 
-                    {/* Tab 2: Market */}
+                    {/* Tab 2: Assumptions & Risks */}
+                    <TabsContent value="assumptions" className="mt-4">
+                        <div className="space-y-6">
+                            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                                <div className="text-sm font-medium text-blue-900">Assumptions & Risks</div>
+                                <div className="text-xs text-blue-700 mt-1">
+                                    Document key assumptions and risks specific to this revenue stream. These will be tracked globally in the plan.
+                                </div>
+                            </div>
+
+                            <div className="grid gap-6 md:grid-cols-2">
+                                <div className="space-y-4">
+                                    <h3 className="text-base font-semibold">Key Assumptions</h3>
+                                    <div className="rounded-2xl border p-4 bg-muted/30">
+                                        <p className="text-sm text-muted-foreground">
+                                            Assumptions for this stream can be managed in the global Assumptions registry.
+                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-2">
+                                            Examples: "Partner channels provide 30% CAC reduction", "Market grows 20% annually"
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <h3 className="text-base font-semibold">Associated Risks</h3>
+                                    <div className="rounded-2xl border p-4 bg-muted/30">
+                                        <p className="text-sm text-muted-foreground">
+                                            Risks affecting this stream can be managed in the global Risks registry.
+                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-2">
+                                            Examples: "Partner delay (30% probability)", "Lower conversion rate (40% probability)"
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="text-xs text-muted-foreground italic">
+                                Note: Full assumptions and risks management will be available in future updates. For now, use the JSON export to document these details.
+                            </div>
+                        </div>
+                    </TabsContent>
+
+                    {/* Tab 3: Market */}
                     <TabsContent value="market" className="mt-4">
                         <div className="grid gap-4 md:grid-cols-3">
                             <div className="space-y-2">
@@ -595,7 +668,7 @@ function StreamEditor({
                         </div>
                     </TabsContent>
 
-                    {/* Tab 3: Pricing */}
+                    {/* Tab 4: Pricing */}
                     <TabsContent value="pricing" className="mt-4">
                         <div className="grid gap-6 md:grid-cols-2">
                             <DistInput
@@ -768,7 +841,7 @@ function StreamEditor({
                         </div>
                     </TabsContent>
 
-                    {/* Tab 4: Growth */}
+                    {/* Tab 5: Growth */}
                     <TabsContent value="growth" className="mt-4">
                         <div className="grid gap-6 md:grid-cols-2">
                             <DistInput
@@ -864,7 +937,7 @@ function StreamEditor({
                         </div>
                     </TabsContent>
 
-                    {/* Tab 5: Costs */}
+                    {/* Tab 6: Costs */}
                     <TabsContent value="costs" className="mt-4">
                         <div className="space-y-4">
                             <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
@@ -1011,9 +1084,12 @@ export function RevenueStreamsView({
         setSelectedStreamId(newStream.id);
     };
 
-    const updateStream = (id: string, updates: Partial<RevenueStream>) => {
-        onChange(revenueStreams.map((s) => (s.id === id ? { ...s, ...updates } : s)));
-    };
+    const updateStream = useCallback(
+        (id: string, updates: Partial<RevenueStream>) => {
+            onChange(revenueStreams.map((s) => (s.id === id ? { ...s, ...updates } : s)));
+        },
+        [onChange, revenueStreams]
+    );
 
     const deleteStream = (id: string) => {
         onChange(revenueStreams.filter((s) => s.id !== id));
@@ -1027,26 +1103,29 @@ export function RevenueStreamsView({
         }
     };
 
-    const handleChangeStartMonth = (id: string, month: number) => {
-        const stream = revenueStreams.find((s) => s.id === id);
-        if (!stream) return;
+    const handleChangeStartMonth = useCallback(
+        (id: string, month: number) => {
+            const stream = revenueStreams.find((s) => s.id === id);
+            if (!stream) return;
 
-        // Find or create timeline event at this month
-        const existingEvent = timeline.find((t) => t.month === month);
-        if (existingEvent) {
-            updateStream(id, { unlockEventId: existingEvent.id });
-        } else if (onChangeTimeline) {
-            // Create new timeline event
-            const newEvent: TimelineEvent = {
-                id: uid("TL"),
-                name: `Month ${month}`,
-                month,
-                description: `Auto-created for ${stream.name}`,
-            };
-            onChangeTimeline([...timeline, newEvent]);
-            updateStream(id, { unlockEventId: newEvent.id });
-        }
-    };
+            // Find or create timeline event at this month
+            const existingEvent = timeline.find((t) => t.month === month);
+            if (existingEvent) {
+                updateStream(id, { unlockEventId: existingEvent.id });
+            } else if (onChangeTimeline) {
+                // Create new timeline event
+                const newEvent: TimelineEvent = {
+                    id: uid("TL"),
+                    name: `Month ${month}`,
+                    month,
+                    description: `Auto-created for ${stream.name}`,
+                };
+                onChangeTimeline([...timeline, newEvent]);
+                updateStream(id, { unlockEventId: newEvent.id });
+            }
+        },
+        [revenueStreams, timeline, onChangeTimeline, updateStream]
+    );
 
     const selectedStream = revenueStreams.find((s) => s.id === selectedStreamId);
 
@@ -1059,19 +1138,6 @@ export function RevenueStreamsView({
     return (
         <TooltipProvider>
             <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h3 className="text-lg font-semibold">Revenue Streams</h3>
-                        <p className="text-sm text-muted-foreground">
-                            Model each revenue stream as an independent mini-business
-                        </p>
-                    </div>
-                    <Button onClick={addStream} size="sm" className="rounded-2xl">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add stream
-                    </Button>
-                </div>
-
                 {revenueStreams.length === 0 ? (
                     <Card className="p-8 text-center text-muted-foreground">
                         <p>No revenue streams defined yet.</p>
@@ -1092,7 +1158,13 @@ export function RevenueStreamsView({
                             {/* Left sidebar: Stream list */}
                             <Card className="rounded-2xl shadow-sm">
                                 <CardHeader className="pb-3">
-                                    <CardTitle className="text-base">Streams</CardTitle>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <CardTitle className="text-base">Streams</CardTitle>
+                                        <Button onClick={addStream} size="sm" className="rounded-2xl">
+                                            <Plus className="h-4 w-4 mr-2" />
+                                            Add stream
+                                        </Button>
+                                    </div>
                                     <div className="text-sm text-muted-foreground">
                                         Click to edit. Drag start month above.
                                     </div>
@@ -1100,15 +1172,15 @@ export function RevenueStreamsView({
                                 <CardContent className="space-y-2">
                                     {streamsWithColors.map((s) => {
                                         const isSel = s.id === selectedStreamId;
-                                        const warnings = computeWarnings(s, horizonMonths);
+                                        const warnings = computeWarnings(s);
                                         const warnCount = warnings.filter((x) => x.severity === "warn").length;
                                         const infoCount = warnings.filter((x) => x.severity === "info").length;
 
                                         return (
-                                            <button
+                                            <div
                                                 key={s.id}
                                                 className={
-                                                    "w-full text-left rounded-2xl border px-3 py-3 transition flex items-start justify-between gap-3 " +
+                                                    "w-full text-left rounded-2xl border px-3 py-3 transition flex items-start justify-between gap-3 cursor-pointer " +
                                                     (isSel ? "bg-muted" : "bg-background hover:bg-muted/50")
                                                 }
                                                 onClick={() => setSelectedStreamId(s.id)}
@@ -1159,7 +1231,7 @@ export function RevenueStreamsView({
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 </div>
-                                            </button>
+                                            </div>
                                         );
                                     })}
 
@@ -1174,7 +1246,6 @@ export function RevenueStreamsView({
                             {selectedStream ? (
                                 <StreamEditor
                                     stream={selectedStream}
-                                    horizonMonths={horizonMonths}
                                     markets={markets}
                                     timeline={timeline}
                                     streamColor={streamColors.get(selectedStream.id) || "#4f46e5"}

@@ -239,12 +239,51 @@ export const DEFAULT: VentureData = {
     ],
 };
 
+// Migrate old revenue stream format to new format
+function migrateRevenueStream(stream: any): any {
+    // Check if already migrated
+    if (stream.unitEconomics?.deliveryCostModel && stream.acquisitionCosts) {
+        return stream;
+    }
+
+    const migrated = { ...stream };
+
+    // Migrate unitEconomics: grossMargin -> deliveryCostModel
+    if (stream.unitEconomics?.grossMargin && !stream.unitEconomics?.deliveryCostModel) {
+        migrated.unitEconomics = {
+            ...stream.unitEconomics,
+            deliveryCostModel: {
+                type: "grossMargin",
+                marginPct: stream.unitEconomics.grossMargin,
+            },
+        };
+        delete migrated.unitEconomics.grossMargin;
+    }
+
+    // Migrate streamCosts -> acquisitionCosts
+    if (stream.streamCosts && !stream.acquisitionCosts) {
+        migrated.acquisitionCosts = {
+            cacPerUnit: stream.streamCosts.cacPerUnit,
+            onboardingCostPerUnit: stream.streamCosts.onboardingCost,
+        };
+        delete migrated.streamCosts;
+    }
+
+    return migrated;
+}
+
 export function loadData(): VentureData {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return DEFAULT;
         const parsed = JSON.parse(raw);
         if (!parsed?.meta?.start || !Array.isArray(parsed?.tasks) || !Array.isArray(parsed?.segments)) return DEFAULT;
+
+        // Migrate revenue streams if needed
+        if (Array.isArray(parsed.revenueStreams)) {
+            parsed.revenueStreams = parsed.revenueStreams.map(migrateRevenueStream);
+        }
+
         return parsed;
     } catch {
         return DEFAULT;

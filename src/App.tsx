@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import {
     Select,
     SelectContent,
@@ -14,7 +16,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 
-import type { VentureData, Task, Segment, Opex, Market, RevenueStream, TimelineEvent, Assumption, Risk, FixedCost } from "./types";
+import type { VentureData, Task, Opex, RevenueStream, TimelineEvent, FixedCost } from "./types";
 import { loadData, saveData, DEFAULT } from "./utils/storage";
 import { fmtCurrency } from "./utils/formatUtils";
 import { computeSeries } from "./utils/modelEngine";
@@ -26,11 +28,12 @@ import { ImportExport } from "./components/ImportExport";
 import { TimelinePage } from "./pages/TimelinePage";
 import { SummaryPage } from "./pages/SummaryPage";
 import { GraphPage } from "./pages/GraphPage";
-import { DataPage } from "./pages/DataPage";
+import { CostsPage } from "./pages/CostsPage";
+import { RevenueStreamsPage } from "./pages/RevenueStreamsPage";
 import { RevenueStreamDetailPage } from "./pages/RevenueStreamDetailPage";
 
 /**
- * Venture Proposal Planner (Local-first)
+ * Venture Proposal Planner
  *
  * - Timeline view: tasks + market segments with TAM/SAM/SOM stacked bars
  * - Time slider drives snapshot and summary
@@ -44,11 +47,10 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
     return (
         <Link
             to={to}
-            className={`px-4 py-2 rounded-2xl text-sm font-medium transition-colors ${
-                isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
+            className={`px-4 py-2 rounded-2xl text-sm font-medium transition-colors ${isActive
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
         >
             {children}
         </Link>
@@ -62,6 +64,7 @@ export default function App() {
     });
 
     const [month, setMonth] = useState(0);
+    const [detailsExpanded, setDetailsExpanded] = useState(false);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -76,26 +79,22 @@ export default function App() {
     const series = useMemo(() => computeSeries(data), [data]);
     const snap = series[Math.min(series.length - 1, Math.max(0, month))] ?? series[0];
 
-    const setTasks = (tasks: Task[]) => setData({ ...data, tasks });
-    const setSegments = (segments: Segment[]) => setData({ ...data, segments });
-    const setOpex = (opex: Opex[]) => setData({ ...data, opex });
+    const setTasks = (tasks: Task[]) => setData((prev) => ({ ...prev, tasks }));
+    const setOpex = (opex: Opex[]) => setData((prev) => ({ ...prev, opex }));
 
     // New data setters for spec-compliant model
-    const setMarkets = (markets: Market[]) => setData({ ...data, markets });
-    const setRevenueStreams = (revenueStreams: RevenueStream[]) => setData({ ...data, revenueStreams });
-    const setTimeline = (timeline: TimelineEvent[]) => setData({ ...data, timeline });
-    const setAssumptions = (assumptions: Assumption[]) => setData({ ...data, assumptions });
-    const setRisks = (risks: Risk[]) => setData({ ...data, risks });
+    const setRevenueStreams = (revenueStreams: RevenueStream[]) => setData((prev) => ({ ...prev, revenueStreams }));
+    const setTimeline = (timeline: TimelineEvent[]) => setData((prev) => ({ ...prev, timeline }));
     const setFixedCosts = (fixedMonthlyCosts: FixedCost[]) =>
-        setData({ ...data, costModel: { ...data.costModel, fixedMonthlyCosts } });
+        setData((prev) => ({ ...prev, costModel: { ...prev.costModel, fixedMonthlyCosts } }));
 
     return (
         <BrowserRouter basename="/planner">
             <div className="p-4 md:p-6 max-w-[1400px] mx-auto">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
-                        <h1 className="text-2xl font-semibold">Venture Proposal Planner</h1>
-                        <p className="text-sm text-muted-foreground">Local-first venture modelling: tasks + market segments + snapshot financials.</p>
+                        <h1 className="text-2xl font-semibold">{data.meta.name} Planner</h1>
+                        <p className="text-sm text-muted-foreground">venture modelling: tasks + market segments + snapshot financials.</p>
                     </div>
                     <ImportExport data={data} setData={setData} />
                 </div>
@@ -103,57 +102,82 @@ export default function App() {
                 <div className="mt-4 grid gap-4">
                     <Card className="rounded-2xl shadow-sm">
                         <CardContent className="p-4">
-                            <div className="grid md:grid-cols-4 gap-4">
-                                <div>
-                                    <Label>Venture name</Label>
-                                    <Input
-                                        className="rounded-2xl mt-1"
-                                        value={data.meta.name}
-                                        onChange={(e) => setData({ ...data, meta: { ...data.meta, name: e.target.value } })}
-                                    />
-                                </div>
-                                <div>
-                                    <Label>Currency</Label>
-                                    <Select
-                                        value={data.meta.currency}
-                                        onValueChange={(v) => setData({ ...data, meta: { ...data.meta, currency: v } })}
-                                    >
-                                        <SelectTrigger className="rounded-2xl mt-1">
-                                            <SelectValue placeholder="Currency" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="GBP">GBP</SelectItem>
-                                            <SelectItem value="USD">USD</SelectItem>
-                                            <SelectItem value="EUR">EUR</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div>
-                                    <Label>Start date</Label>
-                                    <Input
-                                        type="date"
-                                        className="rounded-2xl mt-1"
-                                        value={data.meta.start}
-                                        onChange={(e) => setData({ ...data, meta: { ...data.meta, start: e.target.value } })}
-                                    />
-                                </div>
-                                <div>
-                                    <Label>Horizon (months)</Label>
-                                    <Input
-                                        type="number"
-                                        className="rounded-2xl mt-1"
-                                        value={data.meta.horizonMonths}
-                                        onChange={(e) =>
-                                            setData({
-                                                ...data,
-                                                meta: { ...data.meta, horizonMonths: Math.max(1, Number(e.target.value || 1)) },
-                                            })
-                                        }
-                                    />
-                                </div>
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="text-sm font-medium">Plan Details</div>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setDetailsExpanded(!detailsExpanded)}
+                                    className="rounded-xl h-7"
+                                >
+                                    {detailsExpanded ? (
+                                        <>
+                                            <ChevronUp className="h-4 w-4 mr-1" />
+                                            Hide
+                                        </>
+                                    ) : (
+                                        <>
+                                            <ChevronDown className="h-4 w-4 mr-1" />
+                                            Show
+                                        </>
+                                    )}
+                                </Button>
                             </div>
 
-                            <Separator className="my-4" />
+                            {detailsExpanded && (
+                                <>
+                                    <div className="grid md:grid-cols-4 gap-4 mb-4">
+                                        <div>
+                                            <Label>Venture name</Label>
+                                            <Input
+                                                className="rounded-2xl mt-1"
+                                                value={data.meta.name}
+                                                onChange={(e) => setData({ ...data, meta: { ...data.meta, name: e.target.value } })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <Label>Currency</Label>
+                                            <Select
+                                                value={data.meta.currency}
+                                                onValueChange={(v) => setData({ ...data, meta: { ...data.meta, currency: v } })}
+                                            >
+                                                <SelectTrigger className="rounded-2xl mt-1">
+                                                    <SelectValue placeholder="Currency" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="GBP">GBP</SelectItem>
+                                                    <SelectItem value="USD">USD</SelectItem>
+                                                    <SelectItem value="EUR">EUR</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div>
+                                            <Label>Start date</Label>
+                                            <Input
+                                                type="date"
+                                                className="rounded-2xl mt-1"
+                                                value={data.meta.start}
+                                                onChange={(e) => setData({ ...data, meta: { ...data.meta, start: e.target.value } })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <Label>Horizon (months)</Label>
+                                            <Input
+                                                type="number"
+                                                className="rounded-2xl mt-1"
+                                                value={data.meta.horizonMonths}
+                                                onChange={(e) =>
+                                                    setData({
+                                                        ...data,
+                                                        meta: { ...data.meta, horizonMonths: Math.max(1, Number(e.target.value || 1)) },
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+                                    <Separator className="my-4" />
+                                </>
+                            )}
 
                             <div className="flex flex-wrap gap-3 items-center">
                                 <div className="text-sm">
@@ -184,15 +208,16 @@ export default function App() {
 
                     {/* Navigation */}
                     <nav className="flex gap-2 px-4">
+                        <NavLink to="/costs">Costs</NavLink>
+                        <NavLink to="/revenue-streams">Revenue Streams</NavLink>
                         <NavLink to="/timeline">Timeline</NavLink>
                         <NavLink to="/graph">Graph</NavLink>
                         <NavLink to="/summary">Summary</NavLink>
-                        <NavLink to="/data">Data</NavLink>
                     </nav>
 
                     {/* Routes */}
                     <Routes>
-                        <Route path="/" element={<Navigate to="/timeline" replace />} />
+                        <Route path="/" element={<Navigate to="/costs" replace />} />
                         <Route
                             path="/timeline"
                             element={<TimelinePage data={data} month={month} setMonth={setMonth} />}
@@ -200,17 +225,23 @@ export default function App() {
                         <Route path="/graph" element={<GraphPage data={data} month={month} />} />
                         <Route path="/summary" element={<SummaryPage data={data} />} />
                         <Route
-                            path="/data"
+                            path="/costs"
                             element={
-                                <DataPage
+                                <CostsPage
+                                    data={data}
+                                    setTasks={setTasks}
+                                    setFixedCosts={setFixedCosts}
+                                    setOpex={setOpex}
+                                />
+                            }
+                        />
+                        <Route
+                            path="/revenue-streams"
+                            element={
+                                <RevenueStreamsPage
                                     data={data}
                                     setRevenueStreams={setRevenueStreams}
                                     setTimeline={setTimeline}
-                                    setFixedCosts={setFixedCosts}
-                                    setOpex={setOpex}
-                                    setTasks={setTasks}
-                                    setAssumptions={setAssumptions}
-                                    setRisks={setRisks}
                                 />
                             }
                         />
