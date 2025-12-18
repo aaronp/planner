@@ -78,6 +78,7 @@ export type RevenueStream = {
     pricingModel: PricingModel;
     revenueUnit: string; // e.g., "subscriber", "transaction", "license"
     unlockEventId?: string; // Timeline event that unlocks this stream
+    duration?: string; // e.g., "12m", "24m" - empty/undefined means infinite (runs to horizon)
     unitEconomics: UnitEconomics;
     adoptionModel: AdoptionModel;
     acquisitionCosts: AcquisitionCosts;

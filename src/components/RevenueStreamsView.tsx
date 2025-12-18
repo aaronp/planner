@@ -227,39 +227,74 @@ function DraggableTimeline({
                             const color = (s as StreamWithColor).color || "#4f46e5";
                             const isDragging = draggingId === s.id;
 
+                            // Calculate width based on duration
+                            let widthPct = 100 - leftPct; // Default: extend to end
+                            if (s.duration) {
+                                // Parse duration (e.g., "12m" -> 12 months)
+                                const match = s.duration.match(/^(\d+)([dwmy])$/);
+                                if (match) {
+                                    const value = parseInt(match[1]!, 10);
+                                    const unit = match[2]!;
+                                    let durationMonths = 0;
+                                    if (unit === "d") durationMonths = value / 30;
+                                    else if (unit === "w") durationMonths = value / 4;
+                                    else if (unit === "m") durationMonths = value;
+                                    else if (unit === "y") durationMonths = value * 12;
+
+                                    widthPct = (durationMonths / horizonMonths) * 100;
+                                }
+                            }
+
                             return (
                                 <div
                                     key={s.id}
                                     className={
                                         "absolute h-10 rounded-2xl border flex items-center justify-between px-3 select-none " +
-                                        (isDragging ? "cursor-grabbing" : "cursor-grab") + " " +
                                         (isSel ? "ring-2 ring-offset-2" : "")
                                     }
                                     style={{
                                         top: `${idx * 44 + 8}px`,
                                         left: `${leftPct}%`,
-                                        width: "min(520px, 70%)",
+                                        width: `${widthPct}%`,
                                         background: `${color}15`,
                                         borderColor: `${color}55`,
                                         transition: isDragging ? "none" : "all 0.2s",
                                     }}
-                                    onMouseDown={(e) => {
-                                        e.preventDefault();
-                                        // Avoid a "jump" by preserving where in the bar the user grabbed (in months).
-                                        // We compute an offset so the bar tracks the cursor from the grab point, not from its left edge.
-                                        const downMonth = monthFromClientX(e.clientX);
-                                        const currentMonth = getStreamMonth(s);
-                                        grabOffsetMonthsRef.current = downMonth - currentMonth;
-                                        setDraggingId(s.id);
-                                        onSelect(s.id);
-                                    }}
                                 >
-                                    <div className="flex items-center gap-2 min-w-0 pointer-events-none">
+                                    {/* Grip icon on the left - draggable */}
+                                    <div
+                                        className={
+                                            "flex items-center justify-center w-8 h-8 -ml-2 cursor-grab active:cursor-grabbing hover:bg-black/5 rounded-xl transition-colors " +
+                                            (isDragging ? "cursor-grabbing" : "")
+                                        }
+                                        onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            // Avoid a "jump" by preserving where in the bar the user grabbed (in months).
+                                            const downMonth = monthFromClientX(e.clientX);
+                                            const currentMonth = getStreamMonth(s);
+                                            grabOffsetMonthsRef.current = downMonth - currentMonth;
+                                            setDraggingId(s.id);
+                                            onSelect(s.id);
+                                        }}
+                                    >
+                                        <GripVertical className="h-4 w-4 text-muted-foreground" />
+                                    </div>
+
+                                    {/* Stream content - clickable to select */}
+                                    <div
+                                        className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
+                                        onClick={() => onSelect(s.id)}
+                                    >
                                         <div className="h-3 w-3 rounded-full" style={{ background: color }} />
                                         <div className="truncate text-sm font-medium">{s.name}</div>
                                         <Badge variant="outline">M{month}</Badge>
+                                        {s.duration && (
+                                            <Badge variant="secondary" className="text-xs">
+                                                {s.duration}
+                                            </Badge>
+                                        )}
                                     </div>
-                                    <GripVertical className="h-4 w-4 text-muted-foreground pointer-events-none" />
                                 </div>
                             );
                         })}
@@ -507,6 +542,17 @@ function StreamEditor({
                                         ))}
                                     </SelectContent>
                                 </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <HelpLabel
+                                    label="Duration"
+                                    help="How long this revenue stream runs (e.g., '12m', '24m'). Leave blank for infinite duration (extends to horizon)."
+                                />
+                                <Input
+                                    value={stream.duration ?? ""}
+                                    onChange={(e) => onUpdate({ ...stream, duration: e.target.value || undefined })}
+                                    placeholder="e.g., 12m, 24m (blank = infinite)"
+                                />
                             </div>
                         </div>
                         <Separator className="my-5" />
