@@ -1,21 +1,41 @@
 import type { RevenueStream, FixedCost, ComputedTask, VentureData, Distribution } from "../types";
 import { addMonths, isWithin, monthIndexFromStart } from "./dateUtils";
+import type { DistributionSelection } from "../contexts/RiskContext";
 
 /**
- * Get the mode (most likely value) from a distribution
+ * Get a value from a distribution based on selection (min/mode/max)
  */
-export function getDistributionMode(dist: Distribution | undefined): number {
+export function getDistributionMode(
+    dist: Distribution | undefined,
+    selection: DistributionSelection = "mode"
+): number {
     if (!dist) return 0;
-    return dist.mode ?? (dist.min + dist.max) / 2;
+
+    if (dist.type === "triangular") {
+        switch (selection) {
+            case "min":
+                return dist.min;
+            case "max":
+                return dist.max;
+            case "mode":
+            default:
+                return dist.mode ?? (dist.min + dist.max) / 2;
+        }
+    }
+
+    return 0;
 }
 
 /**
  * Get a numeric value from a Distribution or number
  */
-export function getDistributionValue(dist: Distribution | number | undefined): number {
+export function getDistributionValue(
+    dist: Distribution | number | undefined,
+    selection: DistributionSelection = "mode"
+): number {
     if (!dist) return 0;
     if (typeof dist === "number") return dist;
-    return getDistributionMode(dist);
+    return getDistributionMode(dist, selection);
 }
 
 /**
@@ -24,7 +44,8 @@ export function getDistributionValue(dist: Distribution | number | undefined): n
 export function streamUnitsAtMonth(
     stream: RevenueStream,
     monthIndex: number,
-    timeline: VentureData["timeline"]
+    timeline: VentureData["timeline"],
+    distributionSelection: DistributionSelection = "mode"
 ): number {
     // Check if stream has started (unlockEventId)
     const unlockEvent = timeline?.find((t) => t.id === stream.unlockEventId);
@@ -52,9 +73,9 @@ export function streamUnitsAtMonth(
     const monthsSinceStart = monthIndex - startMonth;
     const { initialUnits, acquisitionRate, maxUnits, churnRate, expansionRate } = stream.adoptionModel;
 
-    const acqRate = getDistributionMode(acquisitionRate);
-    const churn = getDistributionMode(churnRate) || 0;
-    const expansion = getDistributionMode(expansionRate) || 0;
+    const acqRate = getDistributionMode(acquisitionRate, distributionSelection);
+    const churn = getDistributionMode(churnRate, distributionSelection) || 0;
+    const expansion = getDistributionMode(expansionRate, distributionSelection) || 0;
 
     // Simple model: start with initial units, grow by acquisition rate, apply net churn/expansion
     let units = initialUnits;
@@ -76,11 +97,13 @@ export function streamUnitsAtMonth(
 export function streamRevenueAtMonth(
     stream: RevenueStream,
     monthIndex: number,
-    timeline: VentureData["timeline"]
+    timeline: VentureData["timeline"],
+    streamMultiplier: number = 1,
+    distributionSelection: DistributionSelection = "mode"
 ): number {
-    const units = streamUnitsAtMonth(stream, monthIndex, timeline);
-    const priceMode = getDistributionMode(stream.unitEconomics.pricePerUnit);
-    return units * priceMode;
+    const units = streamUnitsAtMonth(stream, monthIndex, timeline, distributionSelection);
+    const priceMode = getDistributionMode(stream.unitEconomics.pricePerUnit, distributionSelection);
+    return units * priceMode * streamMultiplier;
 }
 
 /**
@@ -89,17 +112,19 @@ export function streamRevenueAtMonth(
 export function streamAcquisitionCostsAtMonth(
     stream: RevenueStream,
     monthIndex: number,
-    timeline: VentureData["timeline"]
+    timeline: VentureData["timeline"],
+    streamMultiplier: number = 1,
+    distributionSelection: DistributionSelection = "mode"
 ): { cac: number; onboarding: number; total: number } {
-    const units = streamUnitsAtMonth(stream, monthIndex, timeline);
-    const unitsLastMonth = monthIndex > 0 ? streamUnitsAtMonth(stream, monthIndex - 1, timeline) : 0;
+    const units = streamUnitsAtMonth(stream, monthIndex, timeline, distributionSelection);
+    const unitsLastMonth = monthIndex > 0 ? streamUnitsAtMonth(stream, monthIndex - 1, timeline, distributionSelection) : 0;
     const newUnits = Math.max(0, units - unitsLastMonth);
 
-    const cacPerUnit = getDistributionMode(stream.acquisitionCosts?.cacPerUnit);
-    const onboardingPerUnit = getDistributionMode(stream.acquisitionCosts?.onboardingCostPerUnit);
+    const cacPerUnit = getDistributionMode(stream.acquisitionCosts?.cacPerUnit, distributionSelection);
+    const onboardingPerUnit = getDistributionMode(stream.acquisitionCosts?.onboardingCostPerUnit, distributionSelection);
 
-    const cac = newUnits * cacPerUnit;
-    const onboarding = newUnits * onboardingPerUnit;
+    const cac = newUnits * cacPerUnit * streamMultiplier;
+    const onboarding = newUnits * onboardingPerUnit * streamMultiplier;
 
     return {
         cac,
@@ -114,10 +139,12 @@ export function streamAcquisitionCostsAtMonth(
 export function streamMarginAtMonth(
     stream: RevenueStream,
     monthIndex: number,
-    timeline: VentureData["timeline"]
+    timeline: VentureData["timeline"],
+    streamMultiplier: number = 1,
+    distributionSelection: DistributionSelection = "mode"
 ): number {
-    const revenue = streamRevenueAtMonth(stream, monthIndex, timeline);
-    const costs = streamAcquisitionCostsAtMonth(stream, monthIndex, timeline).total;
+    const revenue = streamRevenueAtMonth(stream, monthIndex, timeline, streamMultiplier, distributionSelection);
+    const costs = streamAcquisitionCostsAtMonth(stream, monthIndex, timeline, streamMultiplier, distributionSelection).total;
     return revenue - costs;
 }
 
@@ -127,7 +154,8 @@ export function streamMarginAtMonth(
 export function taskCostAtMonth(
     task: ComputedTask,
     monthIndex: number,
-    ventureStart: string
+    ventureStart: string,
+    taskMultiplier: number = 1
 ): { oneOff: number; monthly: number; total: number } {
     const monthISO = addMonths(ventureStart, monthIndex);
     const isActive = isWithin(monthISO, task.computedStart, task.computedEnd);
@@ -135,8 +163,8 @@ export function taskCostAtMonth(
 
     if (!isActive) return { oneOff: 0, monthly: 0, total: 0 };
 
-    const oneOff = isStartMonth ? task.costOneOff : 0;
-    const monthly = task.costMonthly;
+    const oneOff = isStartMonth ? task.costOneOff * taskMultiplier : 0;
+    const monthly = task.costMonthly * taskMultiplier;
     const total = oneOff + monthly;
 
     return { oneOff, monthly, total };
@@ -149,7 +177,9 @@ export function fixedCostsAtMonth(
     fixedCosts: FixedCost[] | undefined,
     monthIndex: number,
     computedTasks: ComputedTask[],
-    ventureStart: string
+    ventureStart: string,
+    fixedCostMultipliers: Record<string, number> = {},
+    distributionSelection: DistributionSelection = "mode"
 ): { costs: FixedCost[]; total: number } {
     if (!fixedCosts) return { costs: [], total: 0 };
 
@@ -157,8 +187,9 @@ export function fixedCostsAtMonth(
         .map((fc) => {
             // If no start event, include from beginning
             if (!fc.startEventId) {
-                const value = getDistributionValue(fc.monthlyCost);
-                return { ...fc, activeValue: value };
+                const value = getDistributionValue(fc.monthlyCost, distributionSelection);
+                const multiplier = fixedCostMultipliers[fc.id] ?? 1;
+                return { ...fc, activeValue: value * multiplier };
             }
 
             // Find the task this fixed cost starts with
@@ -168,8 +199,9 @@ export function fixedCostsAtMonth(
             // Check if we're at or after the start task's start month
             const startTaskMonthIndex = monthIndexFromStart(ventureStart, startTask.computedStart);
             if (monthIndex >= startTaskMonthIndex) {
-                const value = getDistributionValue(fc.monthlyCost);
-                return { ...fc, activeValue: value };
+                const value = getDistributionValue(fc.monthlyCost, distributionSelection);
+                const multiplier = fixedCostMultipliers[fc.id] ?? 1;
+                return { ...fc, activeValue: value * multiplier };
             }
 
             return null;

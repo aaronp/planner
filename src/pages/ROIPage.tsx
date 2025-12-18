@@ -12,6 +12,7 @@ import type { VentureData } from "../types";
 import { fmtCurrency } from "../utils/formatUtils";
 import { computeSeries } from "../utils/modelEngine";
 import { runMonteCarloSimulation } from "../utils/monteCarlo";
+import { useRisk } from "../contexts/RiskContext";
 
 type ROIPageProps = {
     data: VentureData;
@@ -19,6 +20,7 @@ type ROIPageProps = {
 };
 
 export function ROIPage({ data, month }: ROIPageProps) {
+    const { multipliers, distributionSelection } = useRisk();
     const { currency, initialReserve } = data.meta;
     const [revenueMultiple, setRevenueMultiple] = useState(5);
     const [ebitdaMultiple, setEbitdaMultiple] = useState(8);
@@ -26,7 +28,10 @@ export function ROIPage({ data, month }: ROIPageProps) {
     const [monteCarloResults, setMonteCarloResults] = useState<ReturnType<typeof runMonteCarloSimulation> | null>(null);
     const [isRunningSimulation, setIsRunningSimulation] = useState(false);
 
-    const series = useMemo(() => computeSeries(data), [data]);
+    const series = useMemo(
+        () => computeSeries(data, multipliers.tasks, multipliers.fixedCosts, multipliers.revenueStreams, distributionSelection),
+        [data, multipliers, distributionSelection]
+    );
     const currentSnapshot = series[Math.min(series.length - 1, Math.max(0, month))] ?? series[0];
 
     // Monte Carlo simulation handler

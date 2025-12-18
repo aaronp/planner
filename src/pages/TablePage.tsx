@@ -12,6 +12,7 @@ import {
     getDistributionMode,
 } from "../utils/logic";
 import { calculateTotalCosts, calculateTotalMargin, type FormulaComponent } from "../utils/formulas";
+import { useRisk } from "../contexts/RiskContext";
 
 type TablePageProps = {
     data: VentureData;
@@ -19,6 +20,7 @@ type TablePageProps = {
 };
 
 export function TablePage({ data, month }: TablePageProps) {
+    const { multipliers, distributionSelection } = useRisk();
     const { start, currency } = data.meta;
     // Track expanded cells by "streamId:monthIndex" key
     const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
@@ -29,7 +31,10 @@ export function TablePage({ data, month }: TablePageProps) {
     const [costsCollapsed, setCostsCollapsed] = useState(false);
     const [totalsCollapsed, setTotalsCollapsed] = useState(false);
 
-    const series = useMemo(() => computeSeries(data), [data]);
+    const series = useMemo(
+        () => computeSeries(data, multipliers.tasks, multipliers.fixedCosts, multipliers.revenueStreams, distributionSelection),
+        [data, multipliers, distributionSelection]
+    );
 
     // Compute task dates for cost calculations
     const computedTasks = useMemo(() => computeTaskDates(data.tasks, data.meta.start), [data.tasks, data.meta.start]);
@@ -255,13 +260,14 @@ export function TablePage({ data, month }: TablePageProps) {
                                                     const isExpanded = expandedCells.has(cellKey);
 
                                                     // Use centralized logic
-                                                    const units = streamUnitsAtMonth(stream, idx, data.timeline);
-                                                    const priceMode = getDistributionMode(stream.unitEconomics.pricePerUnit);
-                                                    const streamRev = streamRevenueAtMonth(stream, idx, data.timeline);
-                                                    const costs = streamAcquisitionCostsAtMonth(stream, idx, data.timeline);
+                                                    const streamMultiplier = multipliers.revenueStreams[stream.id] ?? 1;
+                                                    const units = streamUnitsAtMonth(stream, idx, data.timeline, distributionSelection);
+                                                    const priceMode = getDistributionMode(stream.unitEconomics.pricePerUnit, distributionSelection);
+                                                    const streamRev = streamRevenueAtMonth(stream, idx, data.timeline, streamMultiplier, distributionSelection);
+                                                    const costs = streamAcquisitionCostsAtMonth(stream, idx, data.timeline, streamMultiplier, distributionSelection);
                                                     const margin = streamRev - costs.total;
 
-                                                    const unitsLastMonth = idx > 0 ? streamUnitsAtMonth(stream, idx - 1, data.timeline) : 0;
+                                                    const unitsLastMonth = idx > 0 ? streamUnitsAtMonth(stream, idx - 1, data.timeline, distributionSelection) : 0;
                                                     const newUnits = Math.max(0, units - unitsLastMonth);
 
                                                     return (
@@ -353,8 +359,9 @@ export function TablePage({ data, month }: TablePageProps) {
                                                     <div className="text-xs whitespace-nowrap">
                                                         {fmtCurrency(
                                                             data.revenueStreams.reduce((sum, stream) => {
-                                                                const streamRev = streamRevenueAtMonth(stream, idx, data.timeline);
-                                                                const costs = streamAcquisitionCostsAtMonth(stream, idx, data.timeline);
+                                                                const streamMultiplier = multipliers.revenueStreams[stream.id] ?? 1;
+                                                                const streamRev = streamRevenueAtMonth(stream, idx, data.timeline, streamMultiplier, distributionSelection);
+                                                                const costs = streamAcquisitionCostsAtMonth(stream, idx, data.timeline, streamMultiplier, distributionSelection);
                                                                 return sum + (streamRev - costs.total);
                                                             }, 0),
                                                             currency
@@ -365,7 +372,8 @@ export function TablePage({ data, month }: TablePageProps) {
                                             {!costsCollapsed && computedTasks.map((task) => {
                                                 const cellKey = `task:${task.id}:${idx}`;
                                                 const isExpanded = expandedCells.has(cellKey);
-                                                const { oneOff, monthly, total } = taskCostAtMonth(task, idx, start);
+                                                const taskMultiplier = multipliers.tasks[task.id] ?? 1;
+                                                const { oneOff, monthly, total } = taskCostAtMonth(task, idx, start, taskMultiplier);
 
                                                 return (
                                                     <td
@@ -424,7 +432,9 @@ export function TablePage({ data, month }: TablePageProps) {
                                                     [fixedCost],
                                                     idx,
                                                     computedTasks,
-                                                    start
+                                                    start,
+                                                    multipliers.fixedCosts,
+                                                    distributionSelection
                                                 );
                                                 const isActive = fixedCostData.costs.length > 0;
                                                 const costValue = isActive ? fixedCostData.total : 0;
@@ -522,7 +532,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                 {(() => {
                                                     const cellKey = `total-costs:${idx}`;
                                                     const isExpanded = expandedCells.has(cellKey);
-                                                    const formula = calculateTotalCosts(data, idx, computedTasks);
+                                                    const formula = calculateTotalCosts(data, idx, computedTasks, multipliers.tasks, multipliers.fixedCosts, distributionSelection);
 
                                                     if (isExpanded) {
                                                         return (
@@ -587,7 +597,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                 {(() => {
                                                     const cellKey = `total-margin:${idx}`;
                                                     const isExpanded = expandedCells.has(cellKey);
-                                                    const formula = calculateTotalMargin(data, idx, computedTasks, row.revenue);
+                                                    const formula = calculateTotalMargin(data, idx, computedTasks, row.revenue, multipliers.tasks, multipliers.fixedCosts, distributionSelection);
 
                                                     if (isExpanded) {
                                                         return (

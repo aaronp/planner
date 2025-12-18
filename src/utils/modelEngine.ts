@@ -1,4 +1,5 @@
 import type { VentureData, Segment, ISODate, YearAgg, Task, ComputedTask } from "../types";
+import type { DistributionSelection } from "../contexts/RiskContext";
 import { monthIndexFromStart, addMonths, isWithin, todayISO } from "./dateUtils";
 import { clamp01, round2 } from "./formatUtils";
 import { parseDependency, addDuration } from "./taskUtils";
@@ -112,7 +113,13 @@ export function computeTaskDates(tasks: Task[], fallbackStart: ISODate): Compute
     return tasks.map(computeTask);
 }
 
-export function computeSeries(data: VentureData) {
+export function computeSeries(
+    data: VentureData,
+    taskMultipliers: Record<string, number> = {},
+    fixedCostMultipliers: Record<string, number> = {},
+    revenueStreamMultipliers: Record<string, number> = {},
+    distributionSelection: DistributionSelection = "mode"
+) {
     const { start, horizonMonths } = data.meta;
     const months = Array.from({ length: Math.max(1, horizonMonths) }, (_, i) => i);
 
@@ -121,14 +128,23 @@ export function computeSeries(data: VentureData) {
 
     const taskMonthlyCost = (m: number) => {
         const monthStartISO = addMonths(start, m);
-        return computedTasks.reduce(
-            (sum, t) => (isWithin(monthStartISO, t.computedStart, t.computedEnd) ? sum + t.costMonthly : sum),
-            0
-        );
+        return computedTasks.reduce((sum, t) => {
+            if (isWithin(monthStartISO, t.computedStart, t.computedEnd)) {
+                const multiplier = taskMultipliers[t.id] ?? 1;
+                return sum + t.costMonthly * multiplier;
+            }
+            return sum;
+        }, 0);
     };
 
     const taskOneOffCost = (m: number) =>
-        computedTasks.reduce((sum, t) => (monthIndexFromStart(start, t.computedStart) === m ? sum + t.costOneOff : sum), 0);
+        computedTasks.reduce((sum, t) => {
+            if (monthIndexFromStart(start, t.computedStart) === m) {
+                const multiplier = taskMultipliers[t.id] ?? 1;
+                return sum + t.costOneOff * multiplier;
+            }
+            return sum;
+        }, 0);
 
     const fixedCostsMonthly = (m: number) => {
         if (!data.costModel?.fixedMonthlyCosts) return 0;
@@ -138,7 +154,8 @@ export function computeSeries(data: VentureData) {
             // If no start event, include from beginning
             if (!fc.startEventId) {
                 const costValue = typeof fc.monthlyCost === 'number' ? fc.monthlyCost : (fc.monthlyCost?.mode ?? fc.monthlyCost?.min ?? 0);
-                return sum + costValue;
+                const multiplier = fixedCostMultipliers[fc.id] ?? 1;
+                return sum + costValue * multiplier;
             }
 
             // Find the task this fixed cost starts with
@@ -149,7 +166,8 @@ export function computeSeries(data: VentureData) {
             const startTaskMonthIndex = monthIndexFromStart(start, startTask.computedStart);
             if (m >= startTaskMonthIndex) {
                 const costValue = typeof fc.monthlyCost === 'number' ? fc.monthlyCost : (fc.monthlyCost?.mode ?? fc.monthlyCost?.min ?? 0);
-                return sum + costValue;
+                const multiplier = fixedCostMultipliers[fc.id] ?? 1;
+                return sum + costValue * multiplier;
             }
 
             return sum;
@@ -165,8 +183,9 @@ export function computeSeries(data: VentureData) {
         // This matches what's shown in individual stream margin columns
         if (data.revenueStreams) {
             for (const stream of data.revenueStreams) {
-                const streamRevenue = streamRevenueAtMonth(stream, m, data.timeline);
-                const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline);
+                const multiplier = revenueStreamMultipliers[stream.id] ?? 1;
+                const streamRevenue = streamRevenueAtMonth(stream, m, data.timeline, multiplier, distributionSelection);
+                const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline, multiplier, distributionSelection);
                 revenue += (streamRevenue - acquisitionCosts.total);
             }
         }

@@ -7,7 +7,8 @@ import { monthIndexFromStart, addMonths, formatMonthLabel, isWithin } from "../u
 import { fmtCurrency, fmtCompact, clamp01 } from "../utils/formatUtils";
 import { computeSeries, computeTaskDates } from "../utils/modelEngine";
 import { calcBarHeight } from "../utils/chartScaling";
-import { streamAcquisitionCostsAtMonth } from "../utils/logic";
+import { streamUnitsAtMonth as streamUnitsAtMonthUtil, streamRevenueAtMonth as streamRevenueAtMonthUtil } from "../utils/logic";
+import { useRisk } from "../contexts/RiskContext";
 
 // Map currency codes to symbols
 function getCurrencySymbol(currency: string): string {
@@ -51,6 +52,7 @@ export function TimelineView({
     data: VentureData;
     month: number;
 }) {
+    const { multipliers, distributionSelection } = useRisk();
     const { start, horizonMonths, currency } = data.meta;
     // Track localStorage version to force reload when colors change
     const [storageVersion, setStorageVersion] = useState(0);
@@ -61,7 +63,10 @@ export function TimelineView({
     const monthLabel = formatMonthLabel(start, month);
     const monthISO = addMonths(start, month);
 
-    const series = useMemo(() => computeSeries(data), [data]);
+    const series = useMemo(
+        () => computeSeries(data, multipliers.tasks, multipliers.fixedCosts, multipliers.revenueStreams, distributionSelection),
+        [data, multipliers, distributionSelection]
+    );
     const snap = series[Math.min(series.length - 1, Math.max(0, month))] ?? series[0];
 
     // Listen to storage events to reload colors when they change
@@ -139,65 +144,14 @@ export function TimelineView({
         return total;
     };
 
-    // Calculate active units for a revenue stream at a specific month
+    // Use centralized logic functions with multipliers and distribution selection
     const streamUnitsAtMonth = (stream: any, m: number) => {
-        // Check if stream has started (unlockEventId)
-        const unlockEvent = data.timeline?.find((t) => t.id === stream.unlockEventId);
-        const startMonth = unlockEvent?.month ?? 0;
-
-        if (m < startMonth) return 0;
-
-        // Check if stream has ended (duration)
-        if (stream.duration) {
-            const match = stream.duration.match(/^(\d+)([dwmy])$/);
-            if (match) {
-                const value = parseInt(match[1]!, 10);
-                const unit = match[2]!;
-                let durationMonths = 0;
-                if (unit === "d") durationMonths = value / 30;
-                else if (unit === "w") durationMonths = value / 4;
-                else if (unit === "m") durationMonths = value;
-                else if (unit === "y") durationMonths = value * 12;
-
-                if (m >= startMonth + durationMonths) return 0;
-            }
-        }
-
-        // Calculate units based on adoption model
-        const monthsSinceStart = m - startMonth;
-        const { initialUnits, acquisitionRate, maxUnits, churnRate, expansionRate } = stream.adoptionModel;
-
-        // Get distribution mode (most likely value)
-        const getMode = (dist: any) => dist?.mode ?? ((dist?.min + dist?.max) / 2) ?? 0;
-
-        const acqRate = getMode(acquisitionRate);
-        const churn = getMode(churnRate) || 0;
-        const expansion = getMode(expansionRate) || 0;
-
-        // Simple model: start with initial units, grow by acquisition rate, apply net churn/expansion
-        let units = initialUnits;
-        for (let i = 0; i < monthsSinceStart; i++) {
-            // Add new acquisitions
-            units += acqRate;
-            // Apply net churn/expansion: units * (1 - churn + expansion)
-            units = units * (1 - churn / 100 + expansion / 100);
-            // Cap at max units if specified
-            if (maxUnits && units > maxUnits) units = maxUnits;
-        }
-
-        return Math.max(0, units);
+        return streamUnitsAtMonthUtil(stream, m, data.timeline, distributionSelection);
     };
 
-    // Calculate net revenue for a revenue stream at a specific month (revenue minus acquisition costs)
     const streamRevenueAtMonth = (stream: any, m: number) => {
-        const units = streamUnitsAtMonth(stream, m);
-        const priceMode = stream.unitEconomics.pricePerUnit?.mode ??
-                         ((stream.unitEconomics.pricePerUnit?.min + stream.unitEconomics.pricePerUnit?.max) / 2) ?? 0;
-        const grossRevenue = units * priceMode;
-
-        // Subtract acquisition costs to get net revenue (matching the table view)
-        const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline);
-        return grossRevenue - acquisitionCosts.total;
+        const streamMultiplier = multipliers.revenueStreams[stream.id] ?? 1;
+        return streamRevenueAtMonthUtil(stream, m, data.timeline, streamMultiplier, distributionSelection);
     };
 
     // Calculate cumulative revenue to date for a revenue stream

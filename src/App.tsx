@@ -21,6 +21,8 @@ import { loadData, saveData, DEFAULT } from "./utils/storage";
 import { fmtCurrency } from "./utils/formatUtils";
 import { computeSeries } from "./utils/modelEngine";
 import { formatMonthLabel } from "./utils/dateUtils";
+import { RiskProvider, useRisk } from "./contexts/RiskContext";
+import { RiskScaleComponent } from "./components/RiskScaleComponent";
 
 // Route Pages
 import { TimelinePage } from "./pages/TimelinePage";
@@ -58,7 +60,9 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
     );
 }
 
-export default function App() {
+function AppContent() {
+    const { multipliers, setMultipliers, distributionSelection, setDistributionSelection } = useRisk();
+
     const [data, setData] = useState<VentureData>(() => {
         if (typeof window === "undefined") return DEFAULT;
         return loadData();
@@ -77,7 +81,10 @@ export default function App() {
     }, [data.meta.horizonMonths]);
 
     const currency = data.meta.currency;
-    const series = useMemo(() => computeSeries(data), [data]);
+    const series = useMemo(
+        () => computeSeries(data, multipliers.tasks, multipliers.fixedCosts, multipliers.revenueStreams, distributionSelection),
+        [data, multipliers, distributionSelection]
+    );
     const snap = series[Math.min(series.length - 1, Math.max(0, month))] ?? series[0];
 
     const setTasks = (tasks: Task[]) => setData((prev) => ({ ...prev, tasks }));
@@ -184,6 +191,14 @@ export default function App() {
                                         </div>
                                     </div>
                                     <Separator className="my-4" />
+
+                                    <RiskScaleComponent
+                                        data={data}
+                                        multipliers={multipliers}
+                                        onMultipliersChange={setMultipliers}
+                                        distributionSelection={distributionSelection}
+                                        onDistributionSelectionChange={setDistributionSelection}
+                                    />
                                 </>
                             )}
 
@@ -288,5 +303,13 @@ export default function App() {
                 </div>
             </div>
         </BrowserRouter>
+    );
+}
+
+export default function App() {
+    return (
+        <RiskProvider>
+            <AppContent />
+        </RiskProvider>
     );
 }

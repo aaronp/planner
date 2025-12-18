@@ -1,4 +1,5 @@
 import type { VentureData, ComputedTask } from "../types";
+import type { DistributionSelection } from "../contexts/RiskContext";
 import {
     taskCostAtMonth,
     fixedCostsAtMonth,
@@ -27,7 +28,10 @@ export type FormulaResult = {
 export function calculateTotalCosts(
     data: VentureData,
     monthIndex: number,
-    computedTasks: ComputedTask[]
+    computedTasks: ComputedTask[],
+    taskMultipliers: Record<string, number> = {},
+    fixedCostMultipliers: Record<string, number> = {},
+    distributionSelection: DistributionSelection = "mode"
 ): FormulaResult {
     const components: FormulaComponent[] = [];
 
@@ -36,7 +40,8 @@ export function calculateTotalCosts(
     let taskTotal = 0;
 
     for (const task of computedTasks) {
-        const { oneOff, monthly, total } = taskCostAtMonth(task, monthIndex, data.meta.start);
+        const taskMultiplier = taskMultipliers[task.id] ?? 1;
+        const { oneOff, monthly, total } = taskCostAtMonth(task, monthIndex, data.meta.start, taskMultiplier);
         if (total > 0) {
             const subComponents: FormulaComponent[] = [];
             if (oneOff > 0) subComponents.push({ label: "One-off", value: oneOff });
@@ -64,7 +69,9 @@ export function calculateTotalCosts(
         data.costModel?.fixedMonthlyCosts,
         monthIndex,
         computedTasks,
-        data.meta.start
+        data.meta.start,
+        fixedCostMultipliers,
+        distributionSelection
     );
 
     if (fixedCostData.total > 0) {
@@ -95,9 +102,12 @@ export function calculateTotalMargin(
     data: VentureData,
     monthIndex: number,
     computedTasks: ComputedTask[],
-    totalRevenue: number
+    totalRevenue: number,
+    taskMultipliers: Record<string, number> = {},
+    fixedCostMultipliers: Record<string, number> = {},
+    distributionSelection: DistributionSelection = "mode"
 ): FormulaResult {
-    const costsFormula = calculateTotalCosts(data, monthIndex, computedTasks);
+    const costsFormula = calculateTotalCosts(data, monthIndex, computedTasks, taskMultipliers, fixedCostMultipliers, distributionSelection);
 
     const components: FormulaComponent[] = [
         {

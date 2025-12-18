@@ -18,6 +18,7 @@ import { computeTaskDates } from "../utils/modelEngine";
 import { streamRevenueAtMonth, streamAcquisitionCostsAtMonth, taskCostAtMonth, fixedCostsAtMonth } from "../utils/logic";
 import { fmtCurrency, fmtCompact } from "../utils/formatUtils";
 import { addMonths } from "../utils/dateUtils";
+import { useRisk } from "../contexts/RiskContext";
 
 type GraphPageProps = {
     data: VentureData;
@@ -25,6 +26,7 @@ type GraphPageProps = {
 };
 
 export function GraphPage({ data }: GraphPageProps) {
+    const { multipliers, distributionSelection } = useRisk();
     const currency = data.meta.currency;
     const start = data.meta.start;
     const horizonMonths = data.meta.horizonMonths;
@@ -79,8 +81,9 @@ export function GraphPage({ data }: GraphPageProps) {
             let totalNetRevenue = 0;
             if (data.revenueStreams) {
                 for (const stream of data.revenueStreams) {
-                    const grossRevenue = streamRevenueAtMonth(stream, m, data.timeline);
-                    const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline);
+                    const streamMultiplier = multipliers.revenueStreams[stream.id] ?? 1;
+                    const grossRevenue = streamRevenueAtMonth(stream, m, data.timeline, streamMultiplier, distributionSelection);
+                    const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline, streamMultiplier, distributionSelection);
                     const netRevenue = grossRevenue - acquisitionCosts.total;
                     row[stream.id] = netRevenue;
                     totalNetRevenue += netRevenue;
@@ -90,7 +93,8 @@ export function GraphPage({ data }: GraphPageProps) {
             // Add each task cost (as negative values for visual separation)
             let totalCosts = 0;
             for (const task of computedTasks) {
-                const costData = taskCostAtMonth(task, m, start);
+                const taskMultiplier = multipliers.tasks[task.id] ?? 1;
+                const costData = taskCostAtMonth(task, m, start, taskMultiplier);
                 row[`cost_${task.id}`] = -costData.total; // Negative for costs
                 totalCosts += costData.total;
             }
@@ -98,7 +102,7 @@ export function GraphPage({ data }: GraphPageProps) {
             // Add fixed costs
             if (data.costModel?.fixedMonthlyCosts) {
                 for (const fixedCost of data.costModel.fixedMonthlyCosts) {
-                    const fixedCostData = fixedCostsAtMonth([fixedCost], m, computedTasks, start);
+                    const fixedCostData = fixedCostsAtMonth([fixedCost], m, computedTasks, start, multipliers.fixedCosts, distributionSelection);
                     row[`fixed_${fixedCost.id}`] = -fixedCostData.total;
                     totalCosts += fixedCostData.total;
                 }
@@ -113,7 +117,7 @@ export function GraphPage({ data }: GraphPageProps) {
 
             return row;
         });
-    }, [data, horizonMonths, start, computedTasks]);
+    }, [data, horizonMonths, start, computedTasks, multipliers, distributionSelection]);
 
     return (
         <div className="grid gap-4">
