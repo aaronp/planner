@@ -1,20 +1,24 @@
 # planner
 
-A React web application built with Bun, Vite, and TypeScript.
+This is a venure planning calculator available [here](https://aaronp.github.io/planner/)
 
-## Prerequisites
+The storage is completely in-browser with a data import/export and PDF download.
 
-- [Bun](https://bun.sh/) (latest version)
+It lets you model various costs and potential revenue streams to help
+answer important investment questions such as:
 
-## Getting Started
+ * "When will we be operationally profitable?"
+ * "When will I get my money back? (i.e. a return on investment)"
+ * "What will the ROI be in 1, 2, ... N years' time?"
+ * "What valuation can I expect?"
 
-### Install Dependencies
+ As those answers can change dramatically based on all manner of factors,
+ so this planner let's you adjust the answers based on individual risk profiles and scenarios.
 
-```bash
-make install
-# or
-bun install
-```
+ There is a built-in monte-carlo simulator which gives you a P10, P50 and P90 confidence intervals for those values as well
+
+ 
+
 
 ### Development
 
@@ -25,69 +29,3 @@ make dev
 ```
 
 The app will be available at `http://localhost:5173`
-
-### Build
-
-Build the production bundle:
-
-```bash
-make build
-# or
-bun run build
-```
-
-### Preview
-
-Preview the production build locally:
-
-```bash
-make preview
-# or
-bun run preview
-```
-
-## Deployment
-
-This project is configured to automatically deploy to GitHub Pages when changes are pushed to the `master` branch.
-
-### Setting Up GitHub Pages
-
-1. Go to your repository settings on GitHub
-2. Navigate to Pages (under "Code and automation")
-3. Under "Build and deployment", set Source to "GitHub Actions"
-4. Push to the `master` branch to trigger deployment
-
-The site will be available at: `https://<username>.github.io/planner/`
-
-## Renaming the Project
-
-To rename this project to your own repository name:
-
-```bash
-make rename
-```
-
-This will:
-1. Prompt you for the new repository name (e.g., `my-app`)
-2. Update all references in the codebase
-3. Convert the name to Title Case for display (e.g., "My App")
-4. Reinstall dependencies with the new name
-
-After renaming, review the changes with `git diff` and commit them.
-
-## Makefile Targets
-
-- `make dev` - Start development server
-- `make build` - Build production bundle
-- `make preview` - Preview production build
-- `make install` - Install dependencies
-- `make clean` - Remove node_modules and dist directories
-- `make rename` - Rename the project (interactive)
-
-## Tech Stack
-
-- **Runtime**: Bun
-- **Framework**: React 18
-- **Build Tool**: Vite
-- **Language**: TypeScript
-- **Deployment**: GitHub Pages via GitHub Actions
