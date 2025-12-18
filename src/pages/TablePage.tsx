@@ -24,6 +24,10 @@ export function TablePage({ data, month }: TablePageProps) {
     const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
     // Track localStorage version to force reload when colors change
     const [storageVersion, setStorageVersion] = useState(0);
+    // Track collapsed column groups
+    const [revenueCollapsed, setRevenueCollapsed] = useState(false);
+    const [costsCollapsed, setCostsCollapsed] = useState(false);
+    const [totalsCollapsed, setTotalsCollapsed] = useState(false);
 
     const series = useMemo(() => computeSeries(data), [data]);
 
@@ -84,11 +88,64 @@ export function TablePage({ data, month }: TablePageProps) {
                 <div className="overflow-auto max-h-[calc(100vh-300px)]">
                     <table className="w-full text-sm border-collapse">
                         <thead className="sticky top-0 bg-background z-10">
+                            {/* Group header row */}
                             <tr className="border-b">
-                                <th className="text-left p-2 font-medium text-muted-foreground sticky left-0 bg-background z-20">
+                                <th className="text-left p-2 font-medium text-muted-foreground sticky left-0 bg-background z-20" rowSpan={2}>
                                     Month
                                 </th>
-                                {data.revenueStreams &&
+                                {(data.revenueStreams?.length ?? 0) > 0 && (
+                                    <th
+                                        colSpan={revenueCollapsed ? 1 : data.revenueStreams!.length}
+                                        className="text-center p-2 font-medium border-l cursor-pointer hover:bg-muted/50 transition-colors"
+                                        style={{
+                                            backgroundColor: "hsl(142, 70%, 95%)",
+                                            borderLeftColor: "hsl(142, 70%, 60%)",
+                                            borderLeftWidth: "3px",
+                                        }}
+                                        onClick={() => setRevenueCollapsed(!revenueCollapsed)}
+                                        title="Click to collapse/expand revenue columns"
+                                    >
+                                        <div className="text-xs">
+                                            Revenue {revenueCollapsed ? "▸" : "▾"}
+                                        </div>
+                                    </th>
+                                )}
+                                {(computedTasks.length + (data.costModel?.fixedMonthlyCosts?.length ?? 0)) > 0 && (
+                                    <th
+                                        colSpan={costsCollapsed ? 1 : computedTasks.length + (data.costModel?.fixedMonthlyCosts?.length ?? 0)}
+                                        className="text-center p-2 font-medium border-l cursor-pointer hover:bg-muted/50 transition-colors"
+                                        style={{
+                                            backgroundColor: "hsl(0, 70%, 95%)",
+                                            borderLeftColor: "hsl(0, 70%, 60%)",
+                                            borderLeftWidth: "3px",
+                                        }}
+                                        onClick={() => setCostsCollapsed(!costsCollapsed)}
+                                        title="Click to collapse/expand cost columns"
+                                    >
+                                        <div className="text-xs">
+                                            Costs {costsCollapsed ? "▸" : "▾"}
+                                        </div>
+                                    </th>
+                                )}
+                                <th
+                                    colSpan={totalsCollapsed ? 1 : 5}
+                                    className="text-center p-2 font-medium border-l cursor-pointer hover:bg-muted/50 transition-colors"
+                                    style={{
+                                        backgroundColor: "hsl(220, 70%, 95%)",
+                                        borderLeftColor: "hsl(220, 70%, 60%)",
+                                        borderLeftWidth: "3px",
+                                    }}
+                                    onClick={() => setTotalsCollapsed(!totalsCollapsed)}
+                                    title="Click to collapse/expand totals columns"
+                                >
+                                    <div className="text-xs">
+                                        Totals {totalsCollapsed ? "▸" : "▾"}
+                                    </div>
+                                </th>
+                            </tr>
+                            {/* Individual column headers */}
+                            <tr className="border-b">
+                                {!revenueCollapsed && data.revenueStreams &&
                                     data.revenueStreams.map((stream) => {
                                         const streamColor = streamColors.get(stream.id) || "#4f46e5";
                                         return (
@@ -106,7 +163,19 @@ export function TablePage({ data, month }: TablePageProps) {
                                             </th>
                                         );
                                     })}
-                                {computedTasks.map((task) => (
+                                {revenueCollapsed && (data.revenueStreams?.length ?? 0) > 0 && (
+                                    <th
+                                        className="text-center p-2 font-medium border-l"
+                                        style={{
+                                            backgroundColor: "hsl(142, 70%, 95%)",
+                                            borderLeftColor: "hsl(142, 70%, 60%)",
+                                            borderLeftWidth: "3px",
+                                        }}
+                                    >
+                                        <div className="text-xs">Total Margin</div>
+                                    </th>
+                                )}
+                                {!costsCollapsed && computedTasks.map((task) => (
                                     <th
                                         key={task.id}
                                         className="text-center p-2 font-medium border-l"
@@ -120,7 +189,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                         <div className="text-xs font-normal text-muted-foreground mt-1">Cost</div>
                                     </th>
                                 ))}
-                                {(data.costModel?.fixedMonthlyCosts ?? []).map((fixedCost) => (
+                                {!costsCollapsed && (data.costModel?.fixedMonthlyCosts ?? []).map((fixedCost) => (
                                     <th
                                         key={fixedCost.id}
                                         className="text-center p-2 font-medium border-l"
@@ -134,11 +203,36 @@ export function TablePage({ data, month }: TablePageProps) {
                                         <div className="text-xs font-normal text-muted-foreground mt-1">Fixed Cost</div>
                                     </th>
                                 ))}
-                                <th className="text-right p-2 font-medium text-muted-foreground border-l">Total Revenue</th>
-                                <th className="text-right p-2 font-medium text-muted-foreground border-l">Total Costs</th>
-                                <th className="text-right p-2 font-medium text-muted-foreground border-l">Margin</th>
-                                <th className="text-right p-2 font-medium text-muted-foreground border-l">Cumulative Profit</th>
-                                <th className="text-right p-2 font-medium text-muted-foreground border-l">Balance</th>
+                                {costsCollapsed && (computedTasks.length + (data.costModel?.fixedMonthlyCosts?.length ?? 0)) > 0 && (
+                                    <th
+                                        className="text-center p-2 font-medium border-l"
+                                        style={{
+                                            backgroundColor: "hsl(0, 70%, 95%)",
+                                            borderLeftColor: "hsl(0, 70%, 60%)",
+                                            borderLeftWidth: "3px",
+                                        }}
+                                    >
+                                        <div className="text-xs">Total Costs</div>
+                                    </th>
+                                )}
+                                {!totalsCollapsed && (
+                                    <>
+                                        <th className="text-right p-2 font-medium text-muted-foreground border-l">Net Revenue</th>
+                                        <th className="text-right p-2 font-medium text-muted-foreground border-l">Total Costs</th>
+                                        <th className="text-right p-2 font-medium text-muted-foreground border-l">Margin</th>
+                                        <th className="text-right p-2 font-medium text-muted-foreground border-l">Cumulative Profit</th>
+                                        <th className="text-right p-2 font-medium text-muted-foreground border-l">Balance</th>
+                                    </>
+                                )}
+                                {totalsCollapsed && (
+                                    <th className="text-right p-2 font-medium border-l" style={{
+                                        backgroundColor: "hsl(220, 70%, 95%)",
+                                        borderLeftColor: "hsl(220, 70%, 60%)",
+                                        borderLeftWidth: "3px",
+                                    }}>
+                                        <div className="text-xs">Balance</div>
+                                    </th>
+                                )}
                             </tr>
                         </thead>
                         <tbody>
@@ -154,7 +248,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                             } transition-colors`}
                                         >
                                             <td className="p-2 sticky left-0 bg-inherit z-10 text-xs">{row.label}</td>
-                                            {data.revenueStreams &&
+                                            {!revenueCollapsed && data.revenueStreams &&
                                                 data.revenueStreams.map((stream) => {
                                                     const streamColor = streamColors.get(stream.id) || "#4f46e5";
                                                     const cellKey = `stream:${stream.id}:${idx}`;
@@ -247,7 +341,28 @@ export function TablePage({ data, month }: TablePageProps) {
                                                         </td>
                                                     );
                                                 })}
-                                            {computedTasks.map((task) => {
+                                            {revenueCollapsed && data.revenueStreams && data.revenueStreams.length > 0 && (
+                                                <td
+                                                    className="text-center p-2 border-l font-medium"
+                                                    style={{
+                                                        backgroundColor: "hsl(142, 70%, 95%)",
+                                                        borderLeftColor: "hsl(142, 70%, 60%)",
+                                                        borderLeftWidth: "3px",
+                                                    }}
+                                                >
+                                                    <div className="text-xs whitespace-nowrap">
+                                                        {fmtCurrency(
+                                                            data.revenueStreams.reduce((sum, stream) => {
+                                                                const streamRev = streamRevenueAtMonth(stream, idx, data.timeline);
+                                                                const costs = streamAcquisitionCostsAtMonth(stream, idx, data.timeline);
+                                                                return sum + (streamRev - costs.total);
+                                                            }, 0),
+                                                            currency
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            )}
+                                            {!costsCollapsed && computedTasks.map((task) => {
                                                 const cellKey = `task:${task.id}:${idx}`;
                                                 const isExpanded = expandedCells.has(cellKey);
                                                 const { oneOff, monthly, total } = taskCostAtMonth(task, idx, start);
@@ -302,7 +417,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                     </td>
                                                 );
                                             })}
-                                            {(data.costModel?.fixedMonthlyCosts ?? []).map((fixedCost) => {
+                                            {!costsCollapsed && (data.costModel?.fixedMonthlyCosts ?? []).map((fixedCost) => {
                                                 const cellKey = `fixed:${fixedCost.id}:${idx}`;
                                                 const isExpanded = expandedCells.has(cellKey);
                                                 const fixedCostData = fixedCostsAtMonth(
@@ -359,17 +474,33 @@ export function TablePage({ data, month }: TablePageProps) {
                                                     </td>
                                                 );
                                             })}
-                                            <td
-                                                className="text-right p-2 border-l font-medium"
-                                                style={{
-                                                    backgroundColor: "hsl(142, 70%, 97%)",
-                                                }}
-                                            >
-                                                <div className="text-xs">
-                                                    {fmtCurrency(row.revenue, currency)}
-                                                </div>
-                                            </td>
-                                            <td
+                                            {costsCollapsed && (computedTasks.length + (data.costModel?.fixedMonthlyCosts?.length ?? 0)) > 0 && (
+                                                <td
+                                                    className="text-center p-2 border-l font-medium"
+                                                    style={{
+                                                        backgroundColor: "hsl(0, 70%, 95%)",
+                                                        borderLeftColor: "hsl(0, 70%, 60%)",
+                                                        borderLeftWidth: "3px",
+                                                    }}
+                                                >
+                                                    <div className="text-xs whitespace-nowrap">
+                                                        {fmtCurrency(row.costs, currency)}
+                                                    </div>
+                                                </td>
+                                            )}
+                                            {!totalsCollapsed && (
+                                                <>
+                                                    <td
+                                                        className="text-right p-2 border-l font-medium"
+                                                        style={{
+                                                            backgroundColor: "hsl(142, 70%, 97%)",
+                                                        }}
+                                                    >
+                                                        <div className="text-xs">
+                                                            {fmtCurrency(row.revenue, currency)}
+                                                        </div>
+                                                    </td>
+                                                    <td
                                                 className="text-right p-0 border-l cursor-pointer font-medium"
                                                 style={{
                                                     backgroundColor: "hsl(0, 0%, 98%)",
@@ -517,6 +648,22 @@ export function TablePage({ data, month }: TablePageProps) {
                                                     {fmtCurrency(data.meta.initialReserve + cumulativeProfits[idx], currency)}
                                                 </div>
                                             </td>
+                                                </>
+                                            )}
+                                            {totalsCollapsed && (
+                                                <td
+                                                    className="text-right p-2 border-l font-medium"
+                                                    style={{
+                                                        backgroundColor: "hsl(220, 70%, 97%)",
+                                                        borderLeftColor: "hsl(220, 70%, 60%)",
+                                                        borderLeftWidth: "3px",
+                                                    }}
+                                                >
+                                                    <div className="text-xs whitespace-nowrap">
+                                                        {fmtCurrency(data.meta.initialReserve + cumulativeProfits[idx], currency)}
+                                                    </div>
+                                                </td>
+                                            )}
                                         </tr>
                                     </React.Fragment>
                                 );

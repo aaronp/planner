@@ -2,6 +2,7 @@ import type { VentureData, Segment, ISODate, YearAgg, Task, ComputedTask } from 
 import { monthIndexFromStart, addMonths, isWithin, todayISO } from "./dateUtils";
 import { clamp01, round2 } from "./formatUtils";
 import { parseDependency, addDuration } from "./taskUtils";
+import { streamRevenueAtMonth, streamAcquisitionCostsAtMonth } from "./logic";
 
 /**
  * Compute task start and end dates based on dependencies and durations
@@ -111,28 +112,6 @@ export function computeTaskDates(tasks: Task[], fallbackStart: ISODate): Compute
     return tasks.map(computeTask);
 }
 
-export function segmentActiveUnitsAtMonth(seg: Segment, ventureStart: ISODate, month: number): number {
-    const entryM = monthIndexFromStart(ventureStart, seg.entry);
-    if (month < entryM) return 0;
-
-    const samUnits = seg.tam * clamp01(seg.samPct);
-    const targetUnits = samUnits * clamp01(seg.somPct);
-
-    const mSince = month - entryM;
-    const ramp = Math.max(1, seg.rampMonths);
-    const p = clamp01(mSince / ramp);
-
-    // Ease-in-out ramp
-    const eased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-
-    if (seg.exit) {
-        const exitM = monthIndexFromStart(ventureStart, seg.exit);
-        if (month > exitM) return 0;
-    }
-
-    return targetUnits * eased;
-}
-
 export function computeSeries(data: VentureData) {
     const { start, horizonMonths } = data.meta;
     const months = Array.from({ length: Math.max(1, horizonMonths) }, (_, i) => i);
@@ -150,11 +129,6 @@ export function computeSeries(data: VentureData) {
 
     const taskOneOffCost = (m: number) =>
         computedTasks.reduce((sum, t) => (monthIndexFromStart(start, t.computedStart) === m ? sum + t.costOneOff : sum), 0);
-
-    const opexMonthly = (m: number) => {
-        const monthStartISO = addMonths(start, m);
-        return data.opex.reduce((sum, o) => (isWithin(monthStartISO, o.start, o.end) ? sum + o.monthly : sum), 0);
-    };
 
     const fixedCostsMonthly = (m: number) => {
         if (!data.costModel?.fixedMonthlyCosts) return 0;
@@ -182,32 +156,22 @@ export function computeSeries(data: VentureData) {
         }, 0);
     };
 
-    const segmentUnitsAt = (m: number) =>
-        Object.fromEntries(data.segments.map((s) => [s.id, segmentActiveUnitsAtMonth(s, start, m)])) as Record<
-            string,
-            number
-        >;
-
     const rows = months.map((m) => {
         const label = formatMonthLabel(start, m);
-        const unitsNow = segmentUnitsAt(m);
-        const unitsPrev =
-            m > 0
-                ? segmentUnitsAt(m - 1)
-                : (Object.fromEntries(data.segments.map((s) => [s.id, 0])) as Record<string, number>);
 
         let revenue = 0;
-        let cac = 0;
 
-        for (const seg of data.segments) {
-            const u = unitsNow[seg.id] ?? 0;
-            const uPrev = unitsPrev[seg.id] ?? 0;
-            revenue += u * seg.pricePerUnit;
-            const delta = Math.max(0, u - uPrev);
-            cac += delta * seg.cacPerUnit;
+        // Revenue streams net revenue (revenue minus acquisition costs per stream)
+        // This matches what's shown in individual stream margin columns
+        if (data.revenueStreams) {
+            for (const stream of data.revenueStreams) {
+                const streamRevenue = streamRevenueAtMonth(stream, m, data.timeline);
+                const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline);
+                revenue += (streamRevenue - acquisitionCosts.total);
+            }
         }
 
-        const costs = taskMonthlyCost(m) + opexMonthly(m) + taskOneOffCost(m) + cac + fixedCostsMonthly(m);
+        const costs = taskMonthlyCost(m) + taskOneOffCost(m) + fixedCostsMonthly(m);
 
         return {
             m,
@@ -216,12 +180,8 @@ export function computeSeries(data: VentureData) {
             costs: round2(costs),
             profit: round2(revenue - costs),
             burn: round2(Math.max(0, costs - revenue)),
-            cac: round2(cac),
             taskMonthly: round2(taskMonthlyCost(m)),
             taskOneOff: round2(taskOneOffCost(m)),
-            opex: round2(opexMonthly(m)),
-            unitsTotal: round2(Object.values(unitsNow).reduce((a, b) => a + b, 0)),
-            unitsBySeg: unitsNow,
         };
     });
 

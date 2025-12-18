@@ -140,7 +140,7 @@ export type Risk = {
 };
 
 // ============================================================================
-// Legacy Types (for backward compatibility during migration)
+// Tasks (Project Management)
 // ============================================================================
 
 export type Task = {
@@ -157,28 +157,6 @@ export type Task = {
 export type ComputedTask = Task & {
     computedStart: ISODate; // Calculated start based on dependencies or manual start
     computedEnd?: ISODate; // Calculated from computedStart + duration (undefined if ongoing)
-};
-
-export type Segment = {
-    id: string;
-    name: string;
-    entry: ISODate;
-    exit?: ISODate;
-    tam: number;
-    samPct: number; // 0..1
-    somPct: number; // 0..1
-    pricePerUnit: number; // £ per unit per month
-    cacPerUnit: number; // £ per unit (one-off)
-    rampMonths: number;
-    notes?: string;
-};
-
-export type Opex = {
-    id: string;
-    category: string;
-    start: ISODate;
-    end?: ISODate;
-    monthly: number;
 };
 
 // ============================================================================
@@ -209,9 +187,6 @@ export type VentureData = {
         initialReserve: number;
     };
     tasks: Task[];
-    segments: Segment[]; // Legacy - will migrate to revenueStreams
-    opex: Opex[];
-    // New fields for spec compliance
     timeline?: TimelineEvent[];
     markets?: Market[];
     revenueStreams?: RevenueStream[];

@@ -45,9 +45,6 @@ export const DEFAULT: VentureData = {
             dependsOn: ["T2"],
         },
     ],
-    segments: [],
-    opex: [],
-    // New spec-compliant data structures
     timeline: [
         {
             id: "TL1",
