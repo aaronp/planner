@@ -11,8 +11,9 @@ import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Trash2, Plus, Copy, Palette, GripVertical, HelpCircle, AlertTriangle } from "lucide-react";
-import type { RevenueStream, Market, TimelineEvent, PricingModel, Distribution } from "../types";
+import type { RevenueStream, Market, TimelineEvent, PricingModel, Distribution, Assumption, Risk } from "../types";
 import { uid } from "../utils/formatUtils";
+import { DataTable } from "./DataTable";
 
 type RevenueStreamsViewProps = {
     revenueStreams: RevenueStream[];
@@ -564,44 +565,189 @@ function StreamEditor({
 
                     {/* Tab 2: Assumptions & Risks */}
                     <TabsContent value="assumptions" className="mt-4">
-                        <div className="space-y-6">
-                            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
-                                <div className="text-sm font-medium text-blue-900">Assumptions & Risks</div>
-                                <div className="text-xs text-blue-700 mt-1">
-                                    Document key assumptions and risks specific to this revenue stream. These will be tracked globally in the plan.
-                                </div>
-                            </div>
+                        <Tabs defaultValue="assumptions" className="w-full">
+                            <TabsList className="rounded-2xl mb-4">
+                                <TabsTrigger value="assumptions" className="rounded-2xl">
+                                    Assumptions
+                                </TabsTrigger>
+                                <TabsTrigger value="risks" className="rounded-2xl">
+                                    Risks
+                                </TabsTrigger>
+                            </TabsList>
 
-                            <div className="grid gap-6 md:grid-cols-2">
-                                <div className="space-y-4">
-                                    <h3 className="text-base font-semibold">Key Assumptions</h3>
-                                    <div className="rounded-2xl border p-4 bg-muted/30">
-                                        <p className="text-sm text-muted-foreground">
-                                            Assumptions for this stream can be managed in the global Assumptions registry.
-                                        </p>
-                                        <p className="text-xs text-muted-foreground mt-2">
-                                            Examples: "Partner channels provide 30% CAC reduction", "Market grows 20% annually"
-                                        </p>
-                                    </div>
-                                </div>
+                            <TabsContent value="assumptions">
+                                <DataTable<Assumption>
+                                    title=""
+                                    rows={stream.assumptions ?? []}
+                                    setRows={(assumptions) => onUpdate({ ...stream, assumptions })}
+                                    addRow={() => {
+                                        const existing = stream.assumptions ?? [];
+                                        const aNumbers = existing
+                                            .map((a) => {
+                                                const match = a.id.match(/^A(\d+)$/);
+                                                return match ? parseInt(match[1], 10) : 0;
+                                            })
+                                            .filter((n) => !isNaN(n));
+                                        const maxNum = aNumbers.length > 0 ? Math.max(...aNumbers) : 0;
+                                        return {
+                                            id: `A${maxNum + 1}`,
+                                            description: "",
+                                            owner: "",
+                                        };
+                                    }}
+                                    columns={[
+                                        {
+                                            key: "id",
+                                            header: "ID",
+                                            width: "110px",
+                                            render: (v) => <span className="text-sm font-mono">{v}</span>,
+                                        },
+                                        {
+                                            key: "description",
+                                            header: "Description",
+                                            width: "500px",
+                                            input: "text",
+                                        },
+                                        {
+                                            key: "owner",
+                                            header: "Owner",
+                                            width: "200px",
+                                            input: "text",
+                                        },
+                                    ]}
+                                />
+                            </TabsContent>
 
-                                <div className="space-y-4">
-                                    <h3 className="text-base font-semibold">Associated Risks</h3>
-                                    <div className="rounded-2xl border p-4 bg-muted/30">
-                                        <p className="text-sm text-muted-foreground">
-                                            Risks affecting this stream can be managed in the global Risks registry.
-                                        </p>
-                                        <p className="text-xs text-muted-foreground mt-2">
-                                            Examples: "Partner delay (30% probability)", "Lower conversion rate (40% probability)"
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="text-xs text-muted-foreground italic">
-                                Note: Full assumptions and risks management will be available in future updates. For now, use the JSON export to document these details.
-                            </div>
-                        </div>
+                            <TabsContent value="risks">
+                                <DataTable<Risk>
+                                    title=""
+                                    rows={stream.risks ?? []}
+                                    setRows={(risks) => onUpdate({ ...stream, risks })}
+                                    addRow={() => {
+                                        const existing = stream.risks ?? [];
+                                        const rNumbers = existing
+                                            .map((r) => {
+                                                const match = r.id.match(/^R(\d+)$/);
+                                                return match ? parseInt(match[1], 10) : 0;
+                                            })
+                                            .filter((n) => !isNaN(n));
+                                        const maxNum = rNumbers.length > 0 ? Math.max(...rNumbers) : 0;
+                                        return {
+                                            id: `R${maxNum + 1}`,
+                                            description: "",
+                                            owner: "",
+                                            likelihood: 50,
+                                            impact: "medium" as const,
+                                        };
+                                    }}
+                                    columns={[
+                                        {
+                                            key: "id",
+                                            header: "ID",
+                                            width: "110px",
+                                            render: (v) => <span className="text-sm font-mono">{v}</span>,
+                                        },
+                                        {
+                                            key: "description",
+                                            header: "Description",
+                                            width: "350px",
+                                            input: "text",
+                                        },
+                                        {
+                                            key: "owner",
+                                            header: "Owner",
+                                            width: "150px",
+                                            input: "text",
+                                        },
+                                        {
+                                            key: "likelihood",
+                                            header: "Likelihood",
+                                            width: "150px",
+                                            render: (v, row) => {
+                                                const getLikelihoodLevel = (val?: number): "low" | "medium" | "high" => {
+                                                    if (!val) return "medium";
+                                                    if (val < 33) return "low";
+                                                    if (val < 67) return "medium";
+                                                    return "high";
+                                                };
+                                                const level = getLikelihoodLevel(v);
+                                                const colors = {
+                                                    low: "bg-green-100 text-green-800 border-green-200",
+                                                    medium: "bg-yellow-100 text-yellow-800 border-yellow-200",
+                                                    high: "bg-red-100 text-red-800 border-red-200",
+                                                };
+                                                return (
+                                                    <Select
+                                                        value={level}
+                                                        onValueChange={(nv) => {
+                                                            const risks = stream.risks ?? [];
+                                                            const likelihoodMap = { low: 20, medium: 50, high: 80 };
+                                                            onUpdate({
+                                                                ...stream,
+                                                                risks: risks.map((r) =>
+                                                                    r.id === row.id
+                                                                        ? { ...r, likelihood: likelihoodMap[nv as keyof typeof likelihoodMap] }
+                                                                        : r
+                                                                ),
+                                                            });
+                                                        }}
+                                                    >
+                                                        <SelectTrigger className="h-8 rounded-xl">
+                                                            <Badge className={`${colors[level]} capitalize`}>{level}</Badge>
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="low">Low</SelectItem>
+                                                            <SelectItem value="medium">Medium</SelectItem>
+                                                            <SelectItem value="high">High</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                );
+                                            },
+                                        },
+                                        {
+                                            key: "impact",
+                                            header: "Impact",
+                                            width: "160px",
+                                            render: (v, row) => {
+                                                const impact = v ?? "medium";
+                                                const colors = {
+                                                    minor: "bg-blue-100 text-blue-800 border-blue-200",
+                                                    medium: "bg-orange-100 text-orange-800 border-orange-200",
+                                                    severe: "bg-red-100 text-red-800 border-red-200",
+                                                };
+                                                return (
+                                                    <Select
+                                                        value={String(impact)}
+                                                        onValueChange={(nv) => {
+                                                            const risks = stream.risks ?? [];
+                                                            onUpdate({
+                                                                ...stream,
+                                                                risks: risks.map((r) =>
+                                                                    r.id === row.id
+                                                                        ? { ...r, impact: nv as "minor" | "medium" | "severe" }
+                                                                        : r
+                                                                ),
+                                                            });
+                                                        }}
+                                                    >
+                                                        <SelectTrigger className="h-8 rounded-xl">
+                                                            <Badge className={`${colors[impact as keyof typeof colors]} capitalize`}>
+                                                                {impact}
+                                                            </Badge>
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="minor">Minor</SelectItem>
+                                                            <SelectItem value="medium">Medium</SelectItem>
+                                                            <SelectItem value="severe">Severe</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                );
+                                            },
+                                        },
+                                    ]}
+                                />
+                            </TabsContent>
+                        </Tabs>
                     </TabsContent>
 
                     {/* Tab 3: Market */}

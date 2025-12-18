@@ -224,7 +224,7 @@ export function computeSeries(data: VentureData) {
         };
     });
 
-    let cash = 0;
+    let cash = data.meta.initialReserve || 0;
     let cumRevenue = 0;
     let cumCosts = 0;
     return rows.map((r) => {

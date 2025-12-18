@@ -31,6 +31,7 @@ import { CostsPage } from "./pages/CostsPage";
 import { RevenueStreamsPage } from "./pages/RevenueStreamsPage";
 import { RevenueStreamDetailPage } from "./pages/RevenueStreamDetailPage";
 import { DataPage } from "./pages/DataPage";
+import { ROIPage } from "./pages/ROIPage";
 
 /**
  * Venture Proposal Planner
@@ -119,7 +120,7 @@ export default function App() {
 
                             {detailsExpanded && (
                                 <>
-                                    <div className="grid md:grid-cols-4 gap-4 mb-4">
+                                    <div className="grid md:grid-cols-5 gap-4 mb-4">
                                         <div>
                                             <Label>Venture name</Label>
                                             <Input
@@ -167,6 +168,20 @@ export default function App() {
                                                 }
                                             />
                                         </div>
+                                        <div>
+                                            <Label>Initial Reserve</Label>
+                                            <Input
+                                                type="number"
+                                                className="rounded-2xl mt-1"
+                                                value={data.meta.initialReserve}
+                                                onChange={(e) =>
+                                                    setData({
+                                                        ...data,
+                                                        meta: { ...data.meta, initialReserve: Number(e.target.value || 0) },
+                                                    })
+                                                }
+                                            />
+                                        </div>
                                     </div>
                                     <Separator className="my-4" />
                                 </>
@@ -202,7 +217,7 @@ export default function App() {
                                         Costs {fmtCurrency(snap?.costs ?? 0, currency)}
                                     </Badge>
                                     <Badge variant="secondary" className="rounded-xl">
-                                        Cash {fmtCurrency(snap?.cash ?? 0, currency)}
+                                        Reserve {fmtCurrency(snap?.cash ?? 0, currency)}
                                     </Badge>
                                 </div>
                             </div>
@@ -215,6 +230,7 @@ export default function App() {
                         <NavLink to="/revenue-streams">Revenue Streams</NavLink>
                         <NavLink to="/timeline">Timeline</NavLink>
                         <NavLink to="/table">Table</NavLink>
+                        <NavLink to="/roi">ROI</NavLink>
                         <NavLink to="/graph">Graph</NavLink>
                         <NavLink to="/summary">Summary</NavLink>
                         <NavLink to="/data">Data</NavLink>
@@ -230,6 +246,10 @@ export default function App() {
                         <Route
                             path="/table"
                             element={<TablePage data={data} month={month} />}
+                        />
+                        <Route
+                            path="/roi"
+                            element={<ROIPage data={data} month={month} />}
                         />
                         <Route path="/graph" element={<GraphPage data={data} month={month} />} />
                         <Route path="/summary" element={<SummaryPage data={data} />} />

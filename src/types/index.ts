@@ -82,6 +82,8 @@ export type RevenueStream = {
     unitEconomics: UnitEconomics;
     adoptionModel: AdoptionModel;
     acquisitionCosts: AcquisitionCosts;
+    assumptions?: Assumption[];
+    risks?: Risk[];
 };
 
 // ============================================================================
@@ -106,9 +108,10 @@ export type CostModel = {
 export type Assumption = {
     id: string;
     description: string;
-    confidence: "low" | "medium" | "high";
-    affects: string[]; // ids of streams, markets, timeline events
-    notes?: string;
+    owner?: string;
+    confidence?: "low" | "medium" | "high"; // Legacy
+    affects?: string[]; // Legacy - ids of streams, markets, timeline events
+    notes?: string; // Legacy
 };
 
 export type RiskImpact = {
@@ -119,9 +122,14 @@ export type RiskImpact = {
 
 export type Risk = {
     id: string;
-    name: string;
-    probability: number; // 0-1
-    impact: RiskImpact[];
+    description: string;
+    owner?: string;
+    likelihood?: number; // 0-100 percentage
+    impact?: "minor" | "medium" | "severe";
+    // Legacy fields
+    name?: string;
+    probability?: number; // 0-1
+    impactDetails?: RiskImpact[];
 };
 
 // ============================================================================
@@ -191,6 +199,7 @@ export type VentureData = {
         currency: string;
         start: ISODate;
         horizonMonths: number;
+        initialReserve: number;
     };
     tasks: Task[];
     segments: Segment[]; // Legacy - will migrate to revenueStreams

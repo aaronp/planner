@@ -13,6 +13,7 @@ export const DEFAULT: VentureData = {
         currency: "GBP",
         start: todayISO(),
         horizonMonths: 36,
+        initialReserve: 0,
     },
     tasks: [
         {
@@ -167,42 +168,28 @@ export const DEFAULT: VentureData = {
         {
             id: "A1",
             description: "Partner channels provide 30% cost reduction in CAC for SME segment",
-            confidence: "medium",
-            affects: ["RS1"],
-            notes: "Based on similar ventures in market",
+            owner: "Marketing Team",
         },
         {
             id: "A2",
             description: "EU regulatory compliance adds 6-month delay to enterprise rollout",
-            confidence: "high",
-            affects: ["RS2", "MKT2"],
-            notes: "Historical data from legal review",
+            owner: "Legal Team",
         },
     ],
     risks: [
         {
             id: "R1",
-            name: "Partner Channel Delay",
-            probability: 0.3,
-            impact: [
-                {
-                    targetId: "RS1",
-                    type: "delay",
-                    magnitude: { type: "triangular", min: 1, mode: 2, max: 4 },
-                },
-            ],
+            description: "Partner Channel Delay",
+            owner: "BD Team",
+            likelihood: 30,
+            impact: "medium",
         },
         {
             id: "R2",
-            name: "Lower than expected conversion rate",
-            probability: 0.4,
-            impact: [
-                {
-                    targetId: "RS1",
-                    type: "scale",
-                    magnitude: { type: "triangular", min: 0.6, mode: 0.75, max: 0.9 },
-                },
-            ],
+            description: "Lower than expected conversion rate",
+            owner: "Sales Team",
+            likelihood: 40,
+            impact: "medium",
         },
     ],
 };
@@ -213,6 +200,19 @@ export function loadData(): VentureData {
         if (!raw) return DEFAULT;
         const parsed = JSON.parse(raw);
         if (!parsed?.meta?.start || !Array.isArray(parsed?.tasks)) return DEFAULT;
+
+        // Ensure initialReserve exists for backwards compatibility
+        if (parsed.meta && typeof parsed.meta.initialReserve !== 'number') {
+            parsed.meta.initialReserve = 0;
+        }
+
+        // Ensure assumptions and risks arrays exist
+        if (!Array.isArray(parsed.assumptions)) {
+            parsed.assumptions = [];
+        }
+        if (!Array.isArray(parsed.risks)) {
+            parsed.risks = [];
+        }
 
         return parsed;
     } catch {

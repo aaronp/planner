@@ -50,7 +50,7 @@ export function addDuration(isoDate: ISODate, duration: string, subtract = false
  */
 export function parseDependency(depStr: string): {
     taskId: string;
-    anchor: "start" | "end"; // Default to "end" if not specified
+    anchor: "start" | "end"; // Default to "start" if not specified
     operator?: "+" | "-"; // Whether to add or subtract offset
     offset?: string; // Duration offset (e.g., "2w")
 } | null {
@@ -70,7 +70,7 @@ export function parseDependency(depStr: string): {
 
     return {
         taskId,
-        anchor: anchorChar === "s" ? "start" : "end", // Default to "end"
+        anchor: anchorChar === "e" ? "end" : "start", // Default to "start"
         operator,
         offset,
     };
