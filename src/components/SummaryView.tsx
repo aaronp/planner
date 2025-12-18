@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
     CartesianGrid,
     Legend,
@@ -10,6 +10,7 @@ import {
     Tooltip,
     XAxis,
     YAxis,
+    Cell,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -17,10 +18,47 @@ import type { VentureData } from "../types";
 import { computeSeries, firstIndexWhere, aggregateByCalendarYear } from "../utils/modelEngine";
 import { formatMonthLabel } from "../utils/dateUtils";
 import { fmtCurrency } from "../utils/formatUtils";
+import { useRisk } from "../contexts/RiskContext";
+import { streamMarginAtMonth } from "../utils/logic";
 
-export function SummaryView({ data }: { data: VentureData }) {
-    const series = useMemo(() => computeSeries(data), [data]);
+export function SummaryView({ data, month }: { data: VentureData; month: number }) {
+    const { multipliers, streamDistributions } = useRisk();
+    const series = useMemo(
+        () => computeSeries(data, multipliers.tasks, multipliers.fixedCosts, multipliers.revenueStreams, streamDistributions),
+        [data, multipliers, streamDistributions]
+    );
     const currency = data.meta.currency;
+
+    // Load stream colors from localStorage
+    const [streamColors, setStreamColors] = useState<Map<string, string>>(() => {
+        const stored = localStorage.getItem("streamColors");
+        if (stored) {
+            try {
+                const obj = JSON.parse(stored);
+                return new Map(Object.entries(obj));
+            } catch {
+                return new Map();
+            }
+        }
+        return new Map();
+    });
+
+    // Listen for color changes from other components
+    useEffect(() => {
+        const handleColorChange = () => {
+            const stored = localStorage.getItem("streamColors");
+            if (stored) {
+                try {
+                    const obj = JSON.parse(stored);
+                    setStreamColors(new Map(Object.entries(obj)));
+                } catch {
+                    // ignore
+                }
+            }
+        };
+        window.addEventListener("streamColorsChanged", handleColorChange);
+        return () => window.removeEventListener("streamColorsChanged", handleColorChange);
+    }, []);
 
     const profitableMonthIdx = useMemo(() => firstIndexWhere(series, (r) => r.profit > 0), [series]);
     const cashBreakevenIdx = useMemo(() => firstIndexWhere(series, (r) => r.cash > 0), [series]);
@@ -41,14 +79,31 @@ export function SummaryView({ data }: { data: VentureData }) {
     const lastYear = yearAgg[yearAgg.length - 1]?.year;
 
     const eoyPie = useMemo(() => {
-        if (yearAgg.length === 0) return [] as { name: string; value: number }[];
-        const y = lastYear ?? yearAgg[0]!.year;
-        const found = yearAgg.find((a) => a.year === y) ?? yearAgg[0]!;
-        return [
-            { name: "Revenue", value: Math.max(0, found.revenue) },
-            { name: "EBITDA", value: Math.max(0, found.ebitda) },
-        ];
-    }, [yearAgg, lastYear]);
+        if (!data.revenueStreams || data.revenueStreams.length === 0) {
+            return [] as { name: string; value: number; color: string }[];
+        }
+
+        // Use the current month from the time slider
+        const monthIndex = Math.min(series.length - 1, Math.max(0, month));
+
+        return data.revenueStreams.map((stream) => {
+            const streamMultiplier = multipliers.revenueStreams[stream.id] ?? 1;
+            const netRevenue = streamMarginAtMonth(
+                stream,
+                monthIndex,
+                data.timeline,
+                streamMultiplier,
+                streamDistributions
+            );
+            const color = streamColors.get(stream.id) || "#4f46e5";
+
+            return {
+                name: stream.name,
+                value: Math.max(0, netRevenue),
+                color,
+            };
+        }).filter(item => item.value > 0); // Only show streams with positive revenue
+    }, [data.revenueStreams, data.timeline, month, series.length, multipliers, streamDistributions, streamColors]);
 
     return (
         <div className="grid gap-4">
@@ -113,9 +168,9 @@ export function SummaryView({ data }: { data: VentureData }) {
                                 <YAxis tick={{ fontSize: 11 }} />
                                 <Tooltip />
                                 <Legend />
-                                <Line type="monotone" dataKey="revenue" name="Revenue" dot={false} />
-                                <Line type="monotone" dataKey="costs" name="Costs" dot={false} />
-                                <Line type="monotone" dataKey="profit" name="EBITDA" dot={false} />
+                                <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#22c55e" strokeWidth={2} dot={false} />
+                                <Line type="monotone" dataKey="costs" name="Costs" stroke="#ef4444" strokeWidth={2} dot={false} />
+                                <Line type="monotone" dataKey="profit" name="EBITDA" stroke="#3b82f6" strokeWidth={2} dot={false} />
                             </LineChart>
                         </ResponsiveContainer>
                     </CardContent>
@@ -162,14 +217,18 @@ export function SummaryView({ data }: { data: VentureData }) {
 
                 <Card className="rounded-2xl shadow-sm">
                     <CardHeader>
-                        <CardTitle className="text-base">EOY pie (Revenue vs EBITDA)</CardTitle>
+                        <CardTitle className="text-base">Revenue Streams ({formatMonthLabel(data.meta.start, month)})</CardTitle>
                     </CardHeader>
                     <CardContent className="h-[320px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
-                                <Tooltip />
+                                <Tooltip formatter={(value: any) => fmtCurrency(value, currency)} />
                                 <Legend />
-                                <Pie data={eoyPie} dataKey="value" nameKey="name" outerRadius={110} />
+                                <Pie data={eoyPie} dataKey="value" nameKey="name" outerRadius={110}>
+                                    {eoyPie.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                    ))}
+                                </Pie>
                             </PieChart>
                         </ResponsiveContainer>
                     </CardContent>

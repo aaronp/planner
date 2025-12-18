@@ -269,7 +269,7 @@ function AppContent() {
                             element={<ROIPage data={data} month={month} />}
                         />
                         <Route path="/graph" element={<GraphPage data={data} month={month} />} />
-                        <Route path="/summary" element={<SummaryPage data={data} />} />
+                        <Route path="/summary" element={<SummaryPage data={data} month={month} />} />
                         <Route
                             path="/costs"
                             element={

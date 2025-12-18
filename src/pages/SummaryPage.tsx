@@ -3,8 +3,9 @@ import { SummaryView } from "../components/SummaryView";
 
 type SummaryPageProps = {
     data: VentureData;
+    month: number;
 };
 
-export function SummaryPage({ data }: SummaryPageProps) {
-    return <SummaryView data={data} />;
+export function SummaryPage({ data, month }: SummaryPageProps) {
+    return <SummaryView data={data} month={month} />;
 }

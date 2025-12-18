@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
 import type { VentureData } from "../types";
 
 export type RiskMultipliers = {
@@ -96,11 +97,31 @@ export function RiskScaleComponent({
         });
     };
 
+    const handleReset = () => {
+        // Reset all multipliers to 1.0
+        onMultipliersChange({
+            tasks: {},
+            fixedCosts: {},
+            revenueStreams: {},
+        });
+        // Reset all stream distributions to "mode" (Expected)
+        onStreamDistributionsChange({});
+    };
+
     return (
         <div className="grid gap-4">
             <Card className="rounded-2xl shadow-sm">
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                     <CardTitle className="text-base">Risk Scenario Adjustments</CardTitle>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleReset}
+                        className="rounded-xl h-8"
+                    >
+                        <RotateCcw className="h-4 w-4 mr-1" />
+                        Reset
+                    </Button>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     {/* Revenue Streams */}
