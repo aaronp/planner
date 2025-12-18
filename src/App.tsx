@@ -22,8 +22,6 @@ import { fmtCurrency } from "./utils/formatUtils";
 import { computeSeries } from "./utils/modelEngine";
 import { formatMonthLabel } from "./utils/dateUtils";
 
-import { ImportExport } from "./components/ImportExport";
-
 // Route Pages
 import { TimelinePage } from "./pages/TimelinePage";
 import { SummaryPage } from "./pages/SummaryPage";
@@ -31,6 +29,7 @@ import { GraphPage } from "./pages/GraphPage";
 import { CostsPage } from "./pages/CostsPage";
 import { RevenueStreamsPage } from "./pages/RevenueStreamsPage";
 import { RevenueStreamDetailPage } from "./pages/RevenueStreamDetailPage";
+import { DataPage } from "./pages/DataPage";
 
 /**
  * Venture Proposal Planner
@@ -96,7 +95,6 @@ export default function App() {
                         <h1 className="text-2xl font-semibold">{data.meta.name} Planner</h1>
                         <p className="text-sm text-muted-foreground">venture modelling: tasks + market segments + snapshot financials.</p>
                     </div>
-                    <ImportExport data={data} setData={setData} />
                 </div>
 
                 <div className="mt-4 grid gap-4">
@@ -213,6 +211,7 @@ export default function App() {
                         <NavLink to="/timeline">Timeline</NavLink>
                         <NavLink to="/graph">Graph</NavLink>
                         <NavLink to="/summary">Summary</NavLink>
+                        <NavLink to="/data">Data</NavLink>
                     </nav>
 
                     {/* Routes */}
@@ -255,6 +254,7 @@ export default function App() {
                                 />
                             }
                         />
+                        <Route path="/data" element={<DataPage data={data} setData={setData} />} />
                     </Routes>
                 </div>
             </div>
