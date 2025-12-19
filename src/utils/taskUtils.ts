@@ -109,12 +109,38 @@ export function isValidDependency(dep: string): boolean {
  * Calculate the actual start date for a task based on its dependencies
  * @param task - The task to calculate start date for
  * @param allTasks - All tasks in the project (to look up dependencies)
+ * @param computed - Cache of already computed start dates (for memoization)
+ * @param computing - Set of task IDs currently being computed (for circular dependency detection)
  * @returns Calculated start date, or the task's own start date if no valid dependencies
  */
-export function calculateTaskStartDate(task: Task, allTasks: Task[]): ISODate {
+export function calculateTaskStartDate(
+    task: Task,
+    allTasks: Task[],
+    computed: Map<string, ISODate> = new Map(),
+    computing: Set<string> = new Set()
+): ISODate {
+    // Check cache first
+    if (computed.has(task.id)) {
+        return computed.get(task.id)!;
+    }
+
+    // Detect circular dependencies
+    if (computing.has(task.id)) {
+        console.warn(`Circular dependency detected for task ${task.id}. Using task's own start date.`);
+        const fallbackStart = task.start || "";
+        computed.set(task.id, fallbackStart);
+        return fallbackStart;
+    }
+
+    // Mark as being computed
+    computing.add(task.id);
+
     // If no dependencies, use the task's own start date
     if (!task.dependsOn || task.dependsOn.length === 0) {
-        return task.start || "";
+        const startDate = task.start || "";
+        computed.set(task.id, startDate);
+        computing.delete(task.id);
+        return startDate;
     }
 
     // Find the latest date from all dependencies
@@ -126,13 +152,17 @@ export function calculateTaskStartDate(task: Task, allTasks: Task[]): ISODate {
 
         // Find the dependent task
         const depTask = allTasks.find((t) => t.id === parsed.taskId);
-        if (!depTask || !depTask.start) continue; // Skip if task not found
+        if (!depTask) continue; // Skip if task not found
+
+        // RECURSIVELY calculate the dependent task's start date
+        const depStartDate = calculateTaskStartDate(depTask, allTasks, computed, computing);
+        if (!depStartDate) continue;
 
         // Get the anchor date (start or end of dependent task)
-        let anchorDate: ISODate = depTask.start;
+        let anchorDate: ISODate = depStartDate;
         if (parsed.anchor === "end" && depTask.duration) {
-            // Calculate end date
-            const endDate = addDuration(depTask.start, depTask.duration);
+            // Calculate end date based on the COMPUTED start date
+            const endDate = addDuration(depStartDate, depTask.duration);
             if (endDate) anchorDate = endDate;
         }
 
@@ -150,5 +180,8 @@ export function calculateTaskStartDate(task: Task, allTasks: Task[]): ISODate {
     }
 
     // Return the latest date from dependencies, or fallback to task's own start date
-    return latestDate || task.start || "";
+    const finalDate = latestDate || task.start || "";
+    computed.set(task.id, finalDate);
+    computing.delete(task.id);
+    return finalDate;
 }
