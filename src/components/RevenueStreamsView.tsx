@@ -10,10 +10,15 @@ import { Switch } from "./ui/switch";
 import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
-import { Trash2, Plus, Copy, Palette, GripVertical, HelpCircle, AlertTriangle } from "lucide-react";
+import { Trash2, Plus, Copy, Palette, GripVertical, HelpCircle, AlertTriangle, ChevronLeft, ChevronRight, BarChart3, Table as TableIcon } from "lucide-react";
+import { Line, LineChart, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip as RechartsTooltip, Legend } from "recharts";
 import type { RevenueStream, Market, TimelineEvent, PricingModel, Distribution, Assumption, Risk } from "../types";
-import { uid } from "../utils/formatUtils";
+import { uid, fmtCurrency, fmtCompact } from "../utils/formatUtils";
 import { DataTable } from "./DataTable";
+import { calculateStreamMonthlyMetrics, getDistributionMode } from "../utils/logic";
+import { addMonths } from "../utils/dateUtils";
+import type { DistributionSelection } from "../contexts/RiskContext";
+import { Slider } from "./ui/slider";
 
 type RevenueStreamsViewProps = {
     revenueStreams: RevenueStream[];
@@ -22,6 +27,8 @@ type RevenueStreamsViewProps = {
     onChange: (streams: RevenueStream[]) => void;
     onChangeTimeline?: (timeline: TimelineEvent[]) => void;
     horizonMonths?: number;
+    ventureStart: string;
+    currency?: string;
 };
 
 // Extended stream type with UI-specific properties
@@ -39,11 +46,6 @@ function clamp(n: number, lo: number, hi: number) {
 
 function createSimpleDistribution(value: number): Distribution {
     return { type: "triangular", min: value, mode: value, max: value };
-}
-
-function getDistributionMode(dist: Distribution | undefined): number {
-    if (!dist) return 0;
-    return dist.mode ?? (dist.min + dist.max) / 2;
 }
 
 function HelpLabel({ label, help }: { label: string; help: string }) {
@@ -412,6 +414,195 @@ function WarningStrip({ warnings }: { warnings: Warning[] }) {
                 ))}
             </div>
         </div>
+    );
+}
+
+function StreamPreview({
+    stream,
+    timeline,
+    horizonMonths,
+    ventureStart,
+    streamColor,
+    currency,
+}: {
+    stream: RevenueStream;
+    timeline: TimelineEvent[];
+    horizonMonths: number;
+    ventureStart: string;
+    streamColor: string;
+    currency: string;
+}) {
+    const [viewMode, setViewMode] = useState<"chart" | "table">("chart");
+    const [distributionSelection, setDistributionSelection] = useState<DistributionSelection>("mode");
+    const [multiplier, setMultiplier] = useState<number>(1);
+
+    const chartData = useMemo(() => {
+        const months = Array.from({ length: horizonMonths }, (_, i) => i);
+        return months.map((m) => {
+            const monthLabel = addMonths(ventureStart, m).slice(5, 7); // MM format
+
+            // Use the shared calculation function
+            const metrics = calculateStreamMonthlyMetrics(
+                stream,
+                m,
+                timeline,
+                distributionSelection,
+                multiplier
+            );
+
+            return {
+                month: monthLabel,
+                monthIndex: m,
+                units: Math.round(metrics.units * 100) / 100,
+                grossRevenue: metrics.grossRevenue,
+                deliveryCosts: metrics.deliveryCosts,
+                acquisitionCosts: metrics.acquisitionCosts.total,
+                cacCosts: metrics.acquisitionCosts.cac,
+                onboardingCosts: metrics.acquisitionCosts.onboarding,
+                totalCosts: metrics.totalCosts,
+                netProfit: metrics.netProfit,
+            };
+        });
+    }, [stream, timeline, horizonMonths, ventureStart, distributionSelection, multiplier]);
+
+    return (
+        <Card className="rounded-2xl shadow-sm h-full">
+            <CardHeader className="pb-3">
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle className="text-base">Preview: {stream.name}</CardTitle>
+                            <div className="text-sm text-muted-foreground">
+                                Revenue, costs, and net profit over time
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-1 rounded-2xl border p-1">
+                            <Button
+                                size="sm"
+                                variant={viewMode === "chart" ? "default" : "ghost"}
+                                className="rounded-xl h-7 px-2"
+                                onClick={() => setViewMode("chart")}
+                            >
+                                <BarChart3 className="h-3 w-3" />
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant={viewMode === "table" ? "default" : "ghost"}
+                                className="rounded-xl h-7 px-2"
+                                onClick={() => setViewMode("table")}
+                            >
+                                <TableIcon className="h-3 w-3" />
+                            </Button>
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    {/* Risk Controls */}
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <Label className="text-xs font-medium text-muted-foreground">Risk Scenario:</Label>
+                            <div className="flex items-center gap-1 rounded-2xl border p-1">
+                                <Button
+                                    size="sm"
+                                    variant={distributionSelection === "min" ? "default" : "ghost"}
+                                    className="rounded-xl h-7 px-3 text-xs"
+                                    onClick={() => setDistributionSelection("min")}
+                                >
+                                    Bear
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant={distributionSelection === "mode" ? "default" : "ghost"}
+                                    className="rounded-xl h-7 px-3 text-xs"
+                                    onClick={() => setDistributionSelection("mode")}
+                                >
+                                    Expected
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant={distributionSelection === "max" ? "default" : "ghost"}
+                                    className="rounded-xl h-7 px-3 text-xs"
+                                    onClick={() => setDistributionSelection("max")}
+                                >
+                                    Bull
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-medium text-muted-foreground">Risk Scale:</Label>
+                                <span className="text-xs font-mono font-semibold">{multiplier.toFixed(2)}x</span>
+                            </div>
+                            <Slider
+                                value={[multiplier]}
+                                onValueChange={(values) => setMultiplier(values[0] ?? 1)}
+                                min={0.5}
+                                max={2}
+                                step={0.1}
+                                className="w-full"
+                            />
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                                <span>0.5x</span>
+                                <span>1.0x</span>
+                                <span>2.0x</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                {viewMode === "chart" ? (
+                    <ResponsiveContainer width="100%" height={400}>
+                        <LineChart data={chartData} margin={{ left: 12, right: 12, top: 10, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis
+                                dataKey="month"
+                                tick={{ fontSize: 11 }}
+                                interval={Math.max(1, Math.floor(horizonMonths / 12))}
+                            />
+                            <YAxis tick={{ fontSize: 11 }} />
+                            <RechartsTooltip formatter={(value: any) => fmtCurrency(value, currency)} />
+                            <Legend />
+                            <Line type="monotone" dataKey="grossRevenue" name="Gross Revenue" stroke={streamColor} strokeWidth={2} dot={false} />
+                            <Line type="monotone" dataKey="deliveryCosts" name="Delivery Costs" stroke="#f97316" strokeWidth={2} dot={false} />
+                            <Line type="monotone" dataKey="acquisitionCosts" name="Acquisition Costs" stroke="#ef4444" strokeWidth={2} dot={false} />
+                            <Line type="monotone" dataKey="netProfit" name="Net Profit" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                        </LineChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div className="overflow-auto max-h-[400px] rounded-2xl border">
+                        <table className="w-full text-xs">
+                            <thead className="bg-muted sticky top-0">
+                                <tr className="border-b">
+                                    <th className="text-left p-2 font-medium">Mo</th>
+                                    <th className="text-right p-2 font-medium">Units</th>
+                                    <th className="text-right p-2 font-medium">Revenue</th>
+                                    <th className="text-right p-2 font-medium">Del. Cost</th>
+                                    <th className="text-right p-2 font-medium">CAC</th>
+                                    <th className="text-right p-2 font-medium">Net Profit</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {chartData.map((row) => (
+                                    <tr key={row.monthIndex} className="border-b hover:bg-muted/50">
+                                        <td className="p-2 font-mono">{row.month}</td>
+                                        <td className="p-2 text-right font-mono">{fmtCompact(row.units)}</td>
+                                        <td className="p-2 text-right font-mono">{fmtCurrency(row.grossRevenue, currency)}</td>
+                                        <td className="p-2 text-right font-mono text-orange-600">-{fmtCurrency(row.deliveryCosts, currency)}</td>
+                                        <td className="p-2 text-right font-mono text-red-600">-{fmtCurrency(row.acquisitionCosts, currency)}</td>
+                                        <td className={`p-2 text-right font-mono font-semibold ${row.netProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                            {fmtCurrency(row.netProfit, currency)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
     );
 }
 
@@ -926,19 +1117,18 @@ function StreamEditor({
                             <div className="rounded-2xl border p-4 md:col-span-2">
                                 <div className="flex items-center justify-between gap-3">
                                     <div>
-                                        <div className="text-sm font-medium">Optional: Contract length & churn</div>
+                                        <div className="text-sm font-medium">Optional: Contract length</div>
                                         <div className="text-xs text-muted-foreground">
-                                            Only if you expect retention effects.
+                                            For annual billing, specify contract duration.
                                         </div>
                                     </div>
                                     <Switch
-                                        checked={!!stream.unitEconomics.churnRate}
+                                        checked={!!stream.unitEconomics.contractLengthMonths}
                                         onCheckedChange={(on) =>
                                             onUpdate({
                                                 ...stream,
                                                 unitEconomics: {
                                                     ...stream.unitEconomics,
-                                                    churnRate: on ? createSimpleDistribution(5) : undefined,
                                                     contractLengthMonths: on
                                                         ? createSimpleDistribution(12)
                                                         : undefined,
@@ -948,39 +1138,25 @@ function StreamEditor({
                                     />
                                 </div>
                                 <AnimatePresence>
-                                    {stream.unitEconomics.churnRate ? (
+                                    {stream.unitEconomics.contractLengthMonths ? (
                                         <motion.div
                                             initial={{ opacity: 0, height: 0 }}
                                             animate={{ opacity: 1, height: "auto" }}
                                             exit={{ opacity: 0, height: 0 }}
-                                            className="mt-4 grid gap-4 md:grid-cols-2"
+                                            className="mt-4"
                                         >
-                                            {stream.unitEconomics.contractLengthMonths && (
-                                                <DistInput
-                                                    label="Contract length"
-                                                    help="Average contract duration in months."
-                                                    value={stream.unitEconomics.contractLengthMonths}
-                                                    suffix="months"
-                                                    onChange={(v) =>
-                                                        onUpdate({
-                                                            ...stream,
-                                                            unitEconomics: {
-                                                                ...stream.unitEconomics,
-                                                                contractLengthMonths: v,
-                                                            },
-                                                        })
-                                                    }
-                                                />
-                                            )}
                                             <DistInput
-                                                label="Monthly churn"
-                                                help="% of customers/units lost each month (if recurring)."
-                                                value={stream.unitEconomics.churnRate}
-                                                suffix="%"
+                                                label="Contract length"
+                                                help="Average contract duration in months. Affects billing frequency for annual contracts."
+                                                value={stream.unitEconomics.contractLengthMonths}
+                                                suffix="months"
                                                 onChange={(v) =>
                                                     onUpdate({
                                                         ...stream,
-                                                        unitEconomics: { ...stream.unitEconomics, churnRate: v },
+                                                        unitEconomics: {
+                                                            ...stream.unitEconomics,
+                                                            contractLengthMonths: v,
+                                                        },
                                                     })
                                                 }
                                             />
@@ -1248,8 +1424,12 @@ export function RevenueStreamsView({
     onChange,
     onChangeTimeline,
     horizonMonths = 36,
+    ventureStart,
+    currency = "£",
 }: RevenueStreamsViewProps) {
     const [selectedStreamId, setSelectedStreamId] = useState<string | null>(revenueStreams[0]?.id ?? null);
+    const [isStreamsCollapsed, setIsStreamsCollapsed] = useState(false);
+    const [isPreviewCollapsed, setIsPreviewCollapsed] = useState(false);
 
     // Store colors in component state and sync with localStorage
     const [streamColors, setStreamColors] = useState<Map<string, string>>(() => {
@@ -1303,7 +1483,6 @@ export function RevenueStreamsView({
                 deliveryCostModel: { type: "grossMargin", marginPct: createSimpleDistribution(70) },
                 billingFrequency: "monthly",
                 contractLengthMonths: createSimpleDistribution(12),
-                churnRate: createSimpleDistribution(5),
             },
             adoptionModel: {
                 initialUnits: 0,
@@ -1411,111 +1590,183 @@ export function RevenueStreamsView({
                             onChangeStartMonth={handleChangeStartMonth}
                         />
 
-                        <div className="grid gap-6 md:grid-cols-[320px_1fr]">
-                            {/* Left sidebar: Stream list */}
-                            <Card className="rounded-2xl shadow-sm">
-                                <CardHeader className="pb-3">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <CardTitle className="text-base">Streams</CardTitle>
-                                        <Button onClick={addStream} size="sm" className="rounded-2xl">
-                                            <Plus className="h-4 w-4 mr-2" />
-                                            Add stream
-                                        </Button>
-                                    </div>
-                                    <div className="text-sm text-muted-foreground">
-                                        Click to edit. Drag start month above.
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="space-y-2">
-                                    {streamsWithColors.map((s) => {
-                                        const isSel = s.id === selectedStreamId;
-                                        const warnings = computeWarnings(s);
-                                        const warnCount = warnings.filter((x) => x.severity === "warn").length;
-                                        const infoCount = warnings.filter((x) => x.severity === "info").length;
-
-                                        return (
-                                            <div
-                                                key={s.id}
-                                                className={
-                                                    "w-full text-left rounded-2xl border px-3 py-3 transition flex items-start justify-between gap-3 cursor-pointer " +
-                                                    (isSel ? "bg-muted" : "bg-background hover:bg-muted/50")
-                                                }
-                                                onClick={() => setSelectedStreamId(s.id)}
-                                            >
-                                                <div className="min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <div
-                                                            className="h-3 w-3 rounded-full"
-                                                            style={{ background: s.color }}
-                                                        />
-                                                        <div className="truncate font-medium">{s.name}</div>
-                                                        {warnCount > 0 ? (
-                                                            <Badge variant="destructive">{warnCount} warn</Badge>
-                                                        ) : null}
-                                                        {warnCount === 0 && infoCount > 0 ? (
-                                                            <Badge variant="secondary">{infoCount} note</Badge>
-                                                        ) : null}
-                                                    </div>
-                                                    <div className="mt-1 text-xs text-muted-foreground truncate">
-                                                        {s.pricingModel} · {s.revenueUnit}
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-1 shrink-0">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="rounded-xl h-8 w-8"
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                            duplicateStream(s);
-                                                        }}
-                                                        title="Duplicate"
-                                                    >
-                                                        <Copy className="h-4 w-4" />
+                        <div className="flex gap-4">
+                            {/* Left sidebar: Stream list (collapsible) */}
+                            {!isStreamsCollapsed && (
+                                <div className="w-[320px] shrink-0">
+                                    <Card className="rounded-2xl shadow-sm">
+                                        <CardHeader className="pb-3">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <CardTitle className="text-base">Streams</CardTitle>
+                                                <div className="flex items-center gap-2">
+                                                    <Button onClick={addStream} size="sm" className="rounded-2xl">
+                                                        <Plus className="h-4 w-4 mr-2" />
+                                                        Add stream
                                                     </Button>
                                                     <Button
+                                                        onClick={() => setIsStreamsCollapsed(true)}
+                                                        size="sm"
                                                         variant="ghost"
-                                                        size="icon"
-                                                        className="rounded-xl h-8 w-8"
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                            deleteStream(s.id);
-                                                        }}
-                                                        title="Delete"
+                                                        className="rounded-2xl"
+                                                        title="Collapse streams panel"
                                                     >
-                                                        <Trash2 className="h-4 w-4" />
+                                                        <ChevronLeft className="h-4 w-4" />
                                                     </Button>
                                                 </div>
                                             </div>
-                                        );
-                                    })}
+                                            <div className="text-sm text-muted-foreground">
+                                                Click to edit. Drag start month above.
+                                            </div>
+                                        </CardHeader>
+                                        <CardContent className="space-y-2">
+                                            {streamsWithColors.map((s) => {
+                                                const isSel = s.id === selectedStreamId;
+                                                const warnings = computeWarnings(s);
+                                                const warnCount = warnings.filter((x) => x.severity === "warn").length;
+                                                const infoCount = warnings.filter((x) => x.severity === "info").length;
 
-                                    <Separator className="my-3" />
-                                    <div className="text-xs text-muted-foreground">
-                                        This panel replaces the old "Market Segments" table: streams are first-class.
+                                                return (
+                                                    <div
+                                                        key={s.id}
+                                                        className={
+                                                            "w-full text-left rounded-2xl border px-3 py-3 transition flex items-start justify-between gap-3 cursor-pointer " +
+                                                            (isSel ? "bg-muted" : "bg-background hover:bg-muted/50")
+                                                        }
+                                                        onClick={() => setSelectedStreamId(s.id)}
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <div
+                                                                    className="h-3 w-3 rounded-full"
+                                                                    style={{ background: s.color }}
+                                                                />
+                                                                <div className="truncate font-medium">{s.name}</div>
+                                                                {warnCount > 0 ? (
+                                                                    <Badge variant="destructive">{warnCount} warn</Badge>
+                                                                ) : null}
+                                                                {warnCount === 0 && infoCount > 0 ? (
+                                                                    <Badge variant="secondary">{infoCount} note</Badge>
+                                                                ) : null}
+                                                            </div>
+                                                            <div className="mt-1 text-xs text-muted-foreground truncate">
+                                                                {s.pricingModel} · {s.revenueUnit}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="rounded-xl h-8 w-8"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    duplicateStream(s);
+                                                                }}
+                                                                title="Duplicate"
+                                                            >
+                                                                <Copy className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="rounded-xl h-8 w-8"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    deleteStream(s.id);
+                                                                }}
+                                                                title="Delete"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+
+                                            <Separator className="my-3" />
+                                            <div className="text-xs text-muted-foreground">
+                                                This panel replaces the old "Market Segments" table: streams are first-class.
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                </div>
+                            )}
+
+                            {/* Collapsed streams button */}
+                            {isStreamsCollapsed && (
+                                <div className="shrink-0">
+                                    <Button
+                                        onClick={() => setIsStreamsCollapsed(false)}
+                                        variant="outline"
+                                        size="sm"
+                                        className="rounded-2xl h-full"
+                                        title="Expand streams panel"
+                                    >
+                                        <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            )}
+
+                            {/* Center panel: Stream editor */}
+                            <div className="flex-1 min-w-0">
+                                {selectedStream ? (
+                                    <StreamEditor
+                                        stream={selectedStream}
+                                        timeline={timeline}
+                                        streamColor={streamColors.get(selectedStream.id) || "#4f46e5"}
+                                        onColorChange={(color) =>
+                                            setStreamColors((prev) => new Map(prev).set(selectedStream.id, color))
+                                        }
+                                        onUpdate={(s) => updateStream(selectedStream.id, s)}
+                                    />
+                                ) : (
+                                    <Card className="rounded-2xl">
+                                        <CardContent className="p-8 text-sm text-muted-foreground">
+                                            Select a stream to edit.
+                                        </CardContent>
+                                    </Card>
+                                )}
+                            </div>
+
+                            {/* Right panel: Preview (collapsible) */}
+                            {!isPreviewCollapsed && selectedStream && (
+                                <div className="w-[400px] shrink-0">
+                                    <div className="relative">
+                                        <Button
+                                            onClick={() => setIsPreviewCollapsed(true)}
+                                            size="sm"
+                                            variant="ghost"
+                                            className="rounded-2xl absolute top-2 right-2 z-10"
+                                            title="Collapse preview panel"
+                                        >
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                        <StreamPreview
+                                            stream={selectedStream}
+                                            timeline={timeline}
+                                            horizonMonths={horizonMonths}
+                                            ventureStart={ventureStart}
+                                            streamColor={streamColors.get(selectedStream.id) || "#4f46e5"}
+                                            currency={currency}
+                                        />
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            )}
 
-                            {/* Right panel: Stream editor */}
-                            {selectedStream ? (
-                                <StreamEditor
-                                    stream={selectedStream}
-                                    timeline={timeline}
-                                    streamColor={streamColors.get(selectedStream.id) || "#4f46e5"}
-                                    onColorChange={(color) =>
-                                        setStreamColors((prev) => new Map(prev).set(selectedStream.id, color))
-                                    }
-                                    onUpdate={(s) => updateStream(selectedStream.id, s)}
-                                />
-                            ) : (
-                                <Card className="rounded-2xl">
-                                    <CardContent className="p-8 text-sm text-muted-foreground">
-                                        Select a stream to edit.
-                                    </CardContent>
-                                </Card>
+                            {/* Collapsed preview button */}
+                            {isPreviewCollapsed && selectedStream && (
+                                <div className="shrink-0">
+                                    <Button
+                                        onClick={() => setIsPreviewCollapsed(false)}
+                                        variant="outline"
+                                        size="sm"
+                                        className="rounded-2xl h-full"
+                                        title="Expand preview panel"
+                                    >
+                                        <ChevronLeft className="h-4 w-4" />
+                                    </Button>
+                                </div>
                             )}
                         </div>
                     </>

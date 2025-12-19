@@ -54,8 +54,7 @@ export type UnitEconomics = {
     pricePerUnit: Distribution;
     deliveryCostModel: DeliveryCostModel;
     billingFrequency: "monthly" | "annual";
-    contractLengthMonths?: Distribution;
-    churnRate?: Distribution; // % monthly churn
+    contractLengthMonths?: Distribution; // For annual billing, contract duration
 };
 
 export type AdoptionModel = {

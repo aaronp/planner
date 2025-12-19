@@ -94,6 +94,7 @@ export function streamUnitsAtMonth(
 
 /**
  * Calculate revenue for a revenue stream at a specific month
+ * Accounts for billing frequency - monthly vs annual billing creates different revenue patterns
  */
 export function streamRevenueAtMonth(
     stream: RevenueStream,
@@ -102,10 +103,49 @@ export function streamRevenueAtMonth(
     streamMultiplier: number = 1,
     streamDistributions: Record<string, DistributionSelection> = {}
 ): number {
-    const units = streamUnitsAtMonth(stream, monthIndex, timeline, streamDistributions);
     const distributionSelection = streamDistributions[stream.id] ?? "mode";
     const priceMode = getDistributionMode(stream.unitEconomics.pricePerUnit, distributionSelection);
-    return units * priceMode * streamMultiplier;
+    const billingFrequency = stream.unitEconomics.billingFrequency || "monthly";
+
+    // Check if stream has started
+    const unlockEvent = timeline?.find((t) => t.id === stream.unlockEventId);
+    const startMonth = unlockEvent?.month ?? 0;
+
+    if (monthIndex < startMonth) return 0;
+
+    // For monthly billing, all active units generate revenue each month
+    if (billingFrequency === "monthly") {
+        const units = streamUnitsAtMonth(stream, monthIndex, timeline, streamDistributions);
+        return units * priceMode * streamMultiplier;
+    }
+
+    // For annual billing, only units that are in their billing month generate revenue
+    // This creates a sawtooth pattern
+    if (billingFrequency === "annual") {
+        // Get contract length (defaults to 12 months if not specified)
+        const contractLength = stream.unitEconomics.contractLengthMonths
+            ? Math.round(getDistributionMode(stream.unitEconomics.contractLengthMonths, distributionSelection))
+            : 12;
+
+        const monthsSinceStart = monthIndex - startMonth;
+
+        // Revenue occurs at month 0 (initial cohort) and then every contractLength months (renewals)
+        const isBillingMonth = monthsSinceStart % contractLength === 0;
+
+        if (!isBillingMonth) {
+            return 0; // No revenue in non-billing months
+        }
+
+        // Calculate units that are renewing/paying this month
+        // This is the active units at this billing month
+        const units = streamUnitsAtMonth(stream, monthIndex, timeline, streamDistributions);
+
+        // Annual billing means they pay the contract length upfront
+        // So revenue = units × price × contractLength
+        return units * priceMode * contractLength * streamMultiplier;
+    }
+
+    return 0;
 }
 
 /**
@@ -214,4 +254,64 @@ export function fixedCostsAtMonth(
     const total = activeCosts.reduce((sum, fc) => sum + fc.activeValue, 0);
 
     return { costs: activeCosts, total };
+}
+
+/**
+ * Calculate comprehensive monthly metrics for a revenue stream
+ * Consolidates units, revenue, delivery costs, acquisition costs, and net profit calculations
+ */
+export function calculateStreamMonthlyMetrics(
+    stream: RevenueStream,
+    monthIndex: number,
+    timeline: VentureData["timeline"],
+    distributionSelection: DistributionSelection = "mode",
+    multiplier: number = 1
+): {
+    units: number;
+    grossRevenue: number;
+    deliveryCosts: number;
+    acquisitionCosts: {
+        cac: number;
+        onboarding: number;
+        total: number;
+    };
+    totalCosts: number;
+    netProfit: number;
+} {
+    // Use the stream-specific distribution selection
+    const streamDistributions = { [stream.id]: distributionSelection };
+
+    // Calculate units
+    const units = streamUnitsAtMonth(stream, monthIndex, timeline, streamDistributions);
+
+    // Calculate gross revenue
+    const grossRevenue = streamRevenueAtMonth(stream, monthIndex, timeline, multiplier, streamDistributions);
+
+    // Calculate acquisition costs (CAC + onboarding)
+    const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, monthIndex, timeline, multiplier, streamDistributions);
+
+    // Calculate delivery costs based on delivery cost model
+    let deliveryCosts = 0;
+    if (stream.unitEconomics.deliveryCostModel.type === "grossMargin") {
+        const marginPct = getDistributionMode(stream.unitEconomics.deliveryCostModel.marginPct, distributionSelection);
+        // Cost = Revenue * (1 - margin%)
+        deliveryCosts = grossRevenue * (1 - marginPct / 100);
+    } else {
+        // perUnitCost
+        const costPerUnit = getDistributionMode(stream.unitEconomics.deliveryCostModel.costPerUnit, distributionSelection);
+        deliveryCosts = units * costPerUnit;
+    }
+
+    // Calculate totals
+    const totalCosts = deliveryCosts + acquisitionCosts.total;
+    const netProfit = grossRevenue - totalCosts;
+
+    return {
+        units,
+        grossRevenue,
+        deliveryCosts,
+        acquisitionCosts,
+        totalCosts,
+        netProfit,
+    };
 }

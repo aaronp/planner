@@ -19,6 +19,8 @@ export function RevenueStreamsPage({ data, setRevenueStreams, setTimeline }: Rev
                     onChange={setRevenueStreams}
                     onChangeTimeline={setTimeline}
                     horizonMonths={data.meta.horizonMonths}
+                    ventureStart={data.meta.start}
+                    currency={data.meta.currency}
                 />
             </CardContent>
         </Card>
