@@ -81,8 +81,9 @@ function computeWarnings(stream: RevenueStream): Warning[] {
         if (costPerUnit >= pricePerUnit) w.push({ key: "cost-high", label: "Delivery cost >= price", severity: "warn" });
     }
 
-    const maxUnits = stream.adoptionModel.maxUnits;
-    if (typeof maxUnits === "number" && stream.adoptionModel.initialUnits > maxUnits) {
+    // Check if initial units exceed SOM cap from market sizing
+    const somMode = stream.marketSizing?.som ? getDistributionMode(stream.marketSizing.som) : undefined;
+    if (typeof somMode === "number" && stream.adoptionModel.initialUnits > somMode) {
         w.push({ key: "som-initial", label: "Initial units exceed SOM cap", severity: "warn" });
     }
 
@@ -801,9 +802,9 @@ function StreamEditor({
                                     />
                                     <DistInput
                                         label="SOM (Serviceable Obtainable)"
-                                        help="Realistic market share you can capture (usually matches your Max Units in Growth tab)"
+                                        help="Realistic market share you can capture. This value is used to cap unit growth in your adoption model."
                                         value={stream.marketSizing.som ?? { type: "triangular", min: 0, mode: 0, max: 0 }}
-                                        hint="Units you can capture"
+                                        hint="Units you can capture (caps growth)"
                                         onChange={(som) =>
                                             onUpdate({
                                                 ...stream,
@@ -1218,33 +1219,6 @@ function StreamEditor({
                                     }}
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <HelpLabel
-                                    label="Max units (SOM cap)"
-                                    help="Maximum number of units you expect to capture for this stream. Used to cap adoption growth. Typically aligns with your SOM estimate in the Overview tab."
-                                />
-                                <Input
-                                    inputMode="numeric"
-                                    value={String(stream.adoptionModel.maxUnits ?? "")}
-                                    onChange={(e) => {
-                                        const x = Number(e.target.value);
-                                        if (!e.target.value) {
-                                            const { maxUnits, ...rest } = stream.adoptionModel;
-                                            onUpdate({ ...stream, adoptionModel: rest });
-                                            return;
-                                        }
-                                        if (Number.isFinite(x))
-                                            onUpdate({
-                                                ...stream,
-                                                adoptionModel: {
-                                                    ...stream.adoptionModel,
-                                                    maxUnits: clamp(Math.round(x), 0, 10_000_000_000),
-                                                },
-                                            });
-                                    }}
-                                />
-                                <div className="text-xs text-muted-foreground">Optional; used to cap adoption.</div>
-                            </div>
 
                             <DistInput
                                 label="Monthly acquisition"
@@ -1487,7 +1461,6 @@ export function RevenueStreamsView({
             adoptionModel: {
                 initialUnits: 0,
                 acquisitionRate: createSimpleDistribution(10),
-                maxUnits: undefined,
                 churnRate: createSimpleDistribution(5),
                 expansionRate: createSimpleDistribution(0),
             },

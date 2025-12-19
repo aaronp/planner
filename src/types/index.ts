@@ -60,7 +60,6 @@ export type UnitEconomics = {
 export type AdoptionModel = {
     initialUnits: number;
     acquisitionRate: Distribution; // units per month
-    maxUnits?: number; // SOM cap
     churnRate?: Distribution; // % monthly churn
     expansionRate?: Distribution; // % monthly expansion
 };

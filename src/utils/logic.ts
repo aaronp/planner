@@ -71,12 +71,17 @@ export function streamUnitsAtMonth(
 
     // Calculate units based on adoption model
     const monthsSinceStart = monthIndex - startMonth;
-    const { initialUnits, acquisitionRate, maxUnits, churnRate, expansionRate } = stream.adoptionModel;
+    const { initialUnits, acquisitionRate, churnRate, expansionRate } = stream.adoptionModel;
 
     const distributionSelection = streamDistributions[stream.id] ?? "mode";
     const acqRate = getDistributionMode(acquisitionRate, distributionSelection);
     const churn = getDistributionMode(churnRate, distributionSelection) || 0;
     const expansion = getDistributionMode(expansionRate, distributionSelection) || 0;
+
+    // Get max units from market sizing SOM if available
+    const maxUnits = stream.marketSizing?.som
+        ? getDistributionMode(stream.marketSizing.som, distributionSelection)
+        : undefined;
 
     // Simple model: start with initial units, grow by acquisition rate, apply net churn/expansion
     let units = initialUnits;
@@ -95,6 +100,7 @@ export function streamUnitsAtMonth(
 /**
  * Calculate revenue for a revenue stream at a specific month
  * Accounts for billing frequency - monthly vs annual billing creates different revenue patterns
+ * For annual billing, uses cohort-based billing where each cohort pays when they join and on renewals
  */
 export function streamRevenueAtMonth(
     stream: RevenueStream,
@@ -119,30 +125,60 @@ export function streamRevenueAtMonth(
         return units * priceMode * streamMultiplier;
     }
 
-    // For annual billing, only units that are in their billing month generate revenue
-    // This creates a sawtooth pattern
+    // For annual billing, use cohort-based billing
+    // Each cohort pays when they join and then every contractLength months after
     if (billingFrequency === "annual") {
-        // Get contract length (defaults to 12 months if not specified)
         const contractLength = stream.unitEconomics.contractLengthMonths
             ? Math.round(getDistributionMode(stream.unitEconomics.contractLengthMonths, distributionSelection))
             : 12;
 
-        const monthsSinceStart = monthIndex - startMonth;
+        let totalRevenue = 0;
 
-        // Revenue occurs at month 0 (initial cohort) and then every contractLength months (renewals)
-        const isBillingMonth = monthsSinceStart % contractLength === 0;
+        // Calculate revenue from all cohorts (current month and all previous renewal months)
+        // A cohort pays if: (monthIndex - cohortStartMonth) % contractLength === 0
+        for (let cohortMonth = startMonth; cohortMonth <= monthIndex; cohortMonth++) {
+            const monthsSinceCohortStart = monthIndex - cohortMonth;
 
-        if (!isBillingMonth) {
-            return 0; // No revenue in non-billing months
+            // Check if this cohort is billing this month
+            const isCohortBillingMonth = monthsSinceCohortStart % contractLength === 0;
+
+            if (!isCohortBillingMonth) continue;
+
+            // Calculate how many units from this cohort are still active
+            // This is: (units at cohortMonth) - (churned units since then)
+            // We approximate this by calculating the cohort size at the cohort month
+            // and then applying the churn that would have occurred
+
+            const { churnRate, expansionRate } = stream.adoptionModel;
+            const churn = getDistributionMode(churnRate, distributionSelection) || 0;
+            const expansion = getDistributionMode(expansionRate, distributionSelection) || 0;
+            const netRetention = 1 - churn / 100 + expansion / 100;
+
+            // Get units that joined in this cohort month (new acquisitions)
+            let cohortSize: number;
+            if (cohortMonth === startMonth) {
+                // Initial cohort
+                cohortSize = stream.adoptionModel.initialUnits;
+            } else {
+                // New acquisitions = change in units from previous month
+                const unitsAtCohortMonth = streamUnitsAtMonth(stream, cohortMonth, timeline, streamDistributions);
+                const unitsBeforeCohortMonth = streamUnitsAtMonth(stream, cohortMonth - 1, timeline, streamDistributions);
+                const acqRate = getDistributionMode(stream.adoptionModel.acquisitionRate, distributionSelection);
+
+                // New cohort size is approximately the acquisition rate
+                // (This is a simplification - the actual calc would need to separate growth from existing users)
+                cohortSize = acqRate;
+            }
+
+            // Apply retention from cohort start to current month
+            const monthsSinceJoined = monthsSinceCohortStart;
+            const survivingUnits = cohortSize * Math.pow(netRetention, monthsSinceJoined);
+
+            // Revenue from this cohort
+            totalRevenue += survivingUnits * priceMode * contractLength * streamMultiplier;
         }
 
-        // Calculate units that are renewing/paying this month
-        // This is the active units at this billing month
-        const units = streamUnitsAtMonth(stream, monthIndex, timeline, streamDistributions);
-
-        // Annual billing means they pay the contract length upfront
-        // So revenue = units × price × contractLength
-        return units * priceMode * contractLength * streamMultiplier;
+        return totalRevenue;
     }
 
     return 0;
