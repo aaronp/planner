@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Download, Upload, RefreshCw, Edit, Save, X, Trash2, FolderOpen } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { VentureData } from "../types";
 import { DEFAULT, getSavedModels, saveModel, deleteModel, loadModel, type SavedModel, type RiskSettings } from "../utils/storage";
 import { useRisk } from "../contexts/RiskContext";
@@ -27,7 +28,7 @@ export function DataPage({ data, setData }: DataPageProps) {
     // Model management state
     const [savedModels, setSavedModels] = useState<SavedModel[]>([]);
     const [saveModelName, setSaveModelName] = useState("");
-    const [saveSuccess, setSaveSuccess] = useState(false);
+    const [saveModalOpen, setSaveModalOpen] = useState(false);
     const [importModalOpen, setImportModalOpen] = useState(false);
 
     // Load saved models on mount
@@ -125,8 +126,7 @@ export function DataPage({ data, setData }: DataPageProps) {
         saveModel(saveModelName.trim(), data, riskSettings);
         setSavedModels(getSavedModels());
         setSaveModelName("");
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
+        setSaveModalOpen(false);
     };
 
     const handleLoadModel = (id: string) => {
@@ -173,6 +173,14 @@ export function DataPage({ data, setData }: DataPageProps) {
                             </p>
                         </div>
                         <div className="flex gap-2">
+                            <Button onClick={() => setSaveModalOpen(true)} variant="outline" className="rounded-2xl">
+                                <Save className="h-4 w-4 mr-2" />
+                                Save
+                            </Button>
+                            <Button onClick={() => setImportModalOpen(true)} variant="outline" className="rounded-2xl">
+                                <FolderOpen className="h-4 w-4 mr-2" />
+                                Load
+                            </Button>
                             <Button onClick={handleExport} variant="outline" className="rounded-2xl">
                                 <Download className="h-4 w-4 mr-2" />
                                 Export JSON
@@ -188,113 +196,6 @@ export function DataPage({ data, setData }: DataPageProps) {
                         </div>
                     </div>
                 </CardHeader>
-            </Card>
-
-            <Card className="rounded-2xl shadow-sm">
-                <CardHeader>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <CardTitle className="text-lg">Saved Models</CardTitle>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                Save, load, and manage different versions of your plan
-                            </p>
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {/* Save current model */}
-                    <div className="rounded-2xl border p-4 bg-muted/30">
-                        <div className="text-sm font-medium mb-3">Save Current Model</div>
-                        <div className="text-xs text-muted-foreground mb-3">
-                            Saves your plan data along with all risk scenario settings (Bear/Expected/Bull and risk scales)
-                        </div>
-                        <div className="flex gap-2">
-                            <Input
-                                placeholder="Enter model name..."
-                                value={saveModelName}
-                                onChange={(e) => setSaveModelName(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        handleSaveModel();
-                                    }
-                                }}
-                                className="rounded-2xl"
-                            />
-                            <Button
-                                onClick={handleSaveModel}
-                                disabled={!saveModelName.trim()}
-                                className="rounded-2xl"
-                            >
-                                <Save className="h-4 w-4 mr-2" />
-                                Save
-                            </Button>
-                        </div>
-                        {saveSuccess && (
-                            <div className="mt-2 text-sm text-green-600">
-                                Model saved successfully!
-                            </div>
-                        )}
-                    </div>
-
-                    {/* List of saved models */}
-                    <div>
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="text-sm font-medium">
-                                Saved Models ({savedModels.length})
-                            </div>
-                            {savedModels.length > 0 && (
-                                <Button
-                                    size="sm"
-                                    variant="default"
-                                    className="rounded-xl"
-                                    onClick={() => setImportModalOpen(true)}
-                                >
-                                    <FolderOpen className="h-4 w-4 mr-2" />
-                                    Import from Model
-                                </Button>
-                            )}
-                        </div>
-                        {savedModels.length === 0 ? (
-                            <div className="rounded-2xl border p-6 text-center text-sm text-muted-foreground">
-                                No saved models yet. Save your current plan above to create one.
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {savedModels.map((model) => (
-                                    <div
-                                        key={model.id}
-                                        className="flex items-center justify-between rounded-2xl border p-3 bg-background hover:bg-muted/50 transition"
-                                    >
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <div className="font-medium truncate">{model.name}</div>
-                                                {model.riskSettings && (
-                                                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                                                        {model.riskSettings.distributionSelection === 'min' ? 'Bear' :
-                                                         model.riskSettings.distributionSelection === 'max' ? 'Bull' : 'Expected'}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="text-xs text-muted-foreground">
-                                                Saved {new Date(model.savedAt).toLocaleString()}
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2 ml-4">
-                                            <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                className="rounded-xl"
-                                                onClick={() => handleDeleteModel(model.id)}
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </CardContent>
             </Card>
 
             <Card className="rounded-2xl shadow-sm">
@@ -356,6 +257,53 @@ export function DataPage({ data, setData }: DataPageProps) {
                 </CardContent>
             </Card>
 
+            {/* Save Model Modal */}
+            <Dialog open={saveModalOpen} onOpenChange={setSaveModalOpen}>
+                <DialogContent className="rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Save Model</DialogTitle>
+                        <DialogDescription>
+                            Save your current plan data along with all risk scenario settings
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <Input
+                            placeholder="Enter model name..."
+                            value={saveModelName}
+                            onChange={(e) => setSaveModelName(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && saveModelName.trim()) {
+                                    handleSaveModel();
+                                }
+                            }}
+                            className="rounded-2xl"
+                            autoFocus
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setSaveModalOpen(false);
+                                setSaveModelName("");
+                            }}
+                            className="rounded-2xl"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleSaveModel}
+                            disabled={!saveModelName.trim()}
+                            className="rounded-2xl"
+                        >
+                            <Save className="h-4 w-4 mr-2" />
+                            Save
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Import Model Modal */}
             <ImportModelModal
                 open={importModalOpen}
                 onOpenChange={setImportModalOpen}
