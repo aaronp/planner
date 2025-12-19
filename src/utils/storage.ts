@@ -101,12 +101,10 @@ export const DEFAULT: VentureData = {
                 },
                 billingFrequency: "monthly",
                 contractLengthMonths: createSimpleDistribution(12),
-                churnRate: { type: "triangular", min: 3, mode: 5, max: 8 },
             },
             adoptionModel: {
                 initialUnits: 0,
                 acquisitionRate: { type: "triangular", min: 50, mode: 100, max: 150 },
-                maxUnits: 5000,
                 churnRate: { type: "triangular", min: 3, mode: 5, max: 8 },
                 expansionRate: createSimpleDistribution(2),
             },
@@ -130,12 +128,10 @@ export const DEFAULT: VentureData = {
                 },
                 billingFrequency: "annual",
                 contractLengthMonths: { type: "triangular", min: 12, mode: 24, max: 36 },
-                churnRate: { type: "triangular", min: 2, mode: 3, max: 5 },
             },
             adoptionModel: {
                 initialUnits: 0,
                 acquisitionRate: { type: "triangular", min: 10, mode: 20, max: 30 },
-                maxUnits: 900,
                 churnRate: { type: "triangular", min: 2, mode: 3, max: 5 },
                 expansionRate: createSimpleDistribution(5),
             },
@@ -219,4 +215,66 @@ export function loadData(): VentureData {
 
 export function saveData(data: VentureData) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data, null, 2));
+}
+
+// ============================================================================
+// Saved Models Management
+// ============================================================================
+
+const SAVED_MODELS_KEY = "venture-planner:saved-models";
+
+export type RiskSettings = {
+    multipliers: {
+        tasks: Record<string, number>;
+        fixedCosts: Record<string, number>;
+        revenueStreams: Record<string, number>;
+    };
+    distributionSelection: "min" | "mode" | "max";
+    streamDistributions: Record<string, "min" | "mode" | "max">;
+};
+
+export type SavedModel = {
+    id: string;
+    name: string;
+    data: VentureData;
+    riskSettings?: RiskSettings; // Optional for backward compatibility
+    savedAt: string; // ISO timestamp
+};
+
+export function getSavedModels(): SavedModel[] {
+    try {
+        const raw = localStorage.getItem(SAVED_MODELS_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed;
+    } catch {
+        return [];
+    }
+}
+
+export function saveModel(name: string, data: VentureData, riskSettings?: RiskSettings): SavedModel {
+    const models = getSavedModels();
+    const newModel: SavedModel = {
+        id: `model_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+        name,
+        data,
+        riskSettings,
+        savedAt: new Date().toISOString(),
+    };
+    models.push(newModel);
+    localStorage.setItem(SAVED_MODELS_KEY, JSON.stringify(models, null, 2));
+    return newModel;
+}
+
+export function deleteModel(id: string): void {
+    const models = getSavedModels();
+    const filtered = models.filter(m => m.id !== id);
+    localStorage.setItem(SAVED_MODELS_KEY, JSON.stringify(filtered, null, 2));
+}
+
+export function loadModel(id: string): SavedModel | null {
+    const models = getSavedModels();
+    const model = models.find(m => m.id === id);
+    return model ?? null;
 }

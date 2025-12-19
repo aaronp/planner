@@ -10,7 +10,7 @@ import { Switch } from "./ui/switch";
 import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
-import { Trash2, Plus, Copy, Palette, GripVertical, HelpCircle, AlertTriangle, ChevronLeft, ChevronRight, BarChart3, Table as TableIcon } from "lucide-react";
+import { Trash2, Plus, Copy, Palette, GripVertical, HelpCircle, AlertTriangle, ChevronLeft, ChevronRight, BarChart3, Table as TableIcon, Undo, Redo } from "lucide-react";
 import { Line, LineChart, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip as RechartsTooltip, Legend } from "recharts";
 import type { RevenueStream, Market, TimelineEvent, PricingModel, Distribution, Assumption, Risk } from "../types";
 import { uid, fmtCurrency, fmtCompact } from "../utils/formatUtils";
@@ -622,6 +622,74 @@ function StreamEditor({
 }) {
     const warnings = useMemo(() => computeWarnings(stream), [stream]);
 
+    // History management for undo/redo
+    const [history, setHistory] = useState<RevenueStream[]>([stream]);
+    const [historyIndex, setHistoryIndex] = useState(0);
+    const MAX_HISTORY = 50;
+
+    // Update history when stream changes from parent
+    useEffect(() => {
+        // Only update if the stream ID matches (switching streams)
+        if (stream.id !== history[historyIndex]?.id) {
+            setHistory([stream]);
+            setHistoryIndex(0);
+        }
+    }, [stream.id]);
+
+    // Wrapper for onUpdate that saves to history
+    const updateWithHistory = useCallback((newStream: RevenueStream) => {
+        // Truncate future history if we're not at the end
+        const newHistory = history.slice(0, historyIndex + 1);
+
+        // Add new state
+        newHistory.push(newStream);
+
+        // Limit history size
+        if (newHistory.length > MAX_HISTORY) {
+            newHistory.shift();
+        } else {
+            setHistoryIndex(historyIndex + 1);
+        }
+
+        setHistory(newHistory);
+        onUpdate(newStream);
+    }, [history, historyIndex, onUpdate]);
+
+    const handleUndo = useCallback(() => {
+        if (historyIndex > 0) {
+            const newIndex = historyIndex - 1;
+            setHistoryIndex(newIndex);
+            onUpdate(history[newIndex]!);
+        }
+    }, [historyIndex, history, onUpdate]);
+
+    const handleRedo = useCallback(() => {
+        if (historyIndex < history.length - 1) {
+            const newIndex = historyIndex + 1;
+            setHistoryIndex(newIndex);
+            onUpdate(history[newIndex]!);
+        }
+    }, [historyIndex, history, onUpdate]);
+
+    const canUndo = historyIndex > 0;
+    const canRedo = historyIndex < history.length - 1;
+
+    // Keyboard shortcuts for undo/redo
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+                e.preventDefault();
+                handleUndo();
+            } else if ((e.ctrlKey || e.metaKey) && (e.shiftKey && e.key === 'z' || e.key === 'y')) {
+                e.preventDefault();
+                handleRedo();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [handleUndo, handleRedo]);
+
     return (
         <Card className="rounded-2xl shadow-sm">
             <CardHeader className="pb-3">
@@ -640,6 +708,28 @@ function StreamEditor({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 rounded-2xl border p-1">
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="rounded-xl h-7 px-2"
+                                onClick={handleUndo}
+                                disabled={!canUndo}
+                                title="Undo (Ctrl+Z)"
+                            >
+                                <Undo className="h-3 w-3" />
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="rounded-xl h-7 px-2"
+                                onClick={handleRedo}
+                                disabled={!canRedo}
+                                title="Redo (Ctrl+Y)"
+                            >
+                                <Redo className="h-3 w-3" />
+                            </Button>
+                        </div>
                         <div className="flex items-center gap-2 rounded-2xl border px-3 py-2">
                             <Palette className="h-4 w-4" />
                             <input
@@ -674,7 +764,7 @@ function StreamEditor({
                                     label="Name"
                                     help="A short label for this revenue stream (e.g. 'SaaS Pro Tier', 'Transaction Fees', 'Enterprise Licence')."
                                 />
-                                <Input value={stream.name} onChange={(e) => onUpdate({ ...stream, name: e.target.value })} />
+                                <Input value={stream.name} onChange={(e) => updateWithHistory({ ...stream, name: e.target.value })} />
                             </div>
                             <div className="space-y-2">
                                 <HelpLabel
@@ -683,7 +773,7 @@ function StreamEditor({
                                 />
                                 <Input
                                     value={stream.revenueUnit}
-                                    onChange={(e) => onUpdate({ ...stream, revenueUnit: e.target.value })}
+                                    onChange={(e) => updateWithHistory({ ...stream, revenueUnit: e.target.value })}
                                     placeholder="e.g. seat / month"
                                 />
                             </div>
@@ -694,7 +784,7 @@ function StreamEditor({
                                 />
                                 <Select
                                     value={stream.pricingModel}
-                                    onValueChange={(v) => onUpdate({ ...stream, pricingModel: v as PricingModel })}
+                                    onValueChange={(v) => updateWithHistory({ ...stream, pricingModel: v as PricingModel })}
                                 >
                                     <SelectTrigger className="rounded-2xl">
                                         <SelectValue placeholder="Select" />
@@ -716,7 +806,7 @@ function StreamEditor({
                                 <Select
                                     value={stream.unlockEventId ?? "none"}
                                     onValueChange={(value) =>
-                                        onUpdate({ ...stream, unlockEventId: value === "none" ? undefined : value })
+                                        updateWithHistory({ ...stream, unlockEventId: value === "none" ? undefined : value })
                                     }
                                 >
                                     <SelectTrigger className="rounded-2xl">
@@ -739,7 +829,7 @@ function StreamEditor({
                                 />
                                 <Input
                                     value={stream.duration ?? ""}
-                                    onChange={(e) => onUpdate({ ...stream, duration: e.target.value || undefined })}
+                                    onChange={(e) => updateWithHistory({ ...stream, duration: e.target.value || undefined })}
                                     placeholder="e.g., 12m, 24m (blank = infinite)"
                                 />
                             </div>
@@ -758,7 +848,7 @@ function StreamEditor({
                                     checked={Boolean(stream.marketSizing)}
                                     onCheckedChange={(checked) => {
                                         if (checked) {
-                                            onUpdate({
+                                            updateWithHistory({
                                                 ...stream,
                                                 marketSizing: {
                                                     tam: { type: "triangular", min: 0, mode: 0, max: 0 },
@@ -782,7 +872,7 @@ function StreamEditor({
                                         value={stream.marketSizing.tam ?? { type: "triangular", min: 0, mode: 0, max: 0 }}
                                         hint="Total market size in units"
                                         onChange={(tam) =>
-                                            onUpdate({
+                                            updateWithHistory({
                                                 ...stream,
                                                 marketSizing: { ...stream.marketSizing!, tam },
                                             })
@@ -794,7 +884,7 @@ function StreamEditor({
                                         value={stream.marketSizing.sam ?? { type: "triangular", min: 0, mode: 0, max: 0 }}
                                         hint="Units you can serve"
                                         onChange={(sam) =>
-                                            onUpdate({
+                                            updateWithHistory({
                                                 ...stream,
                                                 marketSizing: { ...stream.marketSizing!, sam },
                                             })
@@ -806,7 +896,7 @@ function StreamEditor({
                                         value={stream.marketSizing.som ?? { type: "triangular", min: 0, mode: 0, max: 0 }}
                                         hint="Units you can capture (caps growth)"
                                         onChange={(som) =>
-                                            onUpdate({
+                                            updateWithHistory({
                                                 ...stream,
                                                 marketSizing: { ...stream.marketSizing!, som },
                                             })
@@ -839,7 +929,7 @@ function StreamEditor({
                                 <DataTable<Assumption>
                                     title=""
                                     rows={stream.assumptions ?? []}
-                                    setRows={(assumptions) => onUpdate({ ...stream, assumptions })}
+                                    setRows={(assumptions) => updateWithHistory({ ...stream, assumptions })}
                                     addRow={() => {
                                         const existing = stream.assumptions ?? [];
                                         const aNumbers = existing
@@ -882,7 +972,7 @@ function StreamEditor({
                                 <DataTable<Risk>
                                     title=""
                                     rows={stream.risks ?? []}
-                                    setRows={(risks) => onUpdate({ ...stream, risks })}
+                                    setRows={(risks) => updateWithHistory({ ...stream, risks })}
                                     addRow={() => {
                                         const existing = stream.risks ?? [];
                                         const rNumbers = existing
@@ -942,7 +1032,7 @@ function StreamEditor({
                                                         onValueChange={(nv) => {
                                                             const risks = stream.risks ?? [];
                                                             const likelihoodMap = { low: 20, medium: 50, high: 80 };
-                                                            onUpdate({
+                                                            updateWithHistory({
                                                                 ...stream,
                                                                 risks: risks.map((r) =>
                                                                     r.id === row.id
@@ -980,7 +1070,7 @@ function StreamEditor({
                                                         value={String(impact)}
                                                         onValueChange={(nv) => {
                                                             const risks = stream.risks ?? [];
-                                                            onUpdate({
+                                                            updateWithHistory({
                                                                 ...stream,
                                                                 risks: risks.map((r) =>
                                                                     r.id === row.id
@@ -1020,7 +1110,7 @@ function StreamEditor({
                                 suffix="£"
                                 hint={`Per ${stream.revenueUnit}`}
                                 onChange={(v) =>
-                                    onUpdate({
+                                    updateWithHistory({
                                         ...stream,
                                         unitEconomics: { ...stream.unitEconomics, pricePerUnit: v },
                                     })
@@ -1039,7 +1129,7 @@ function StreamEditor({
                                             name={`delivery-cost-${stream.id}`}
                                             checked={stream.unitEconomics.deliveryCostModel.type === "grossMargin"}
                                             onChange={() => {
-                                                onUpdate({
+                                                updateWithHistory({
                                                     ...stream,
                                                     unitEconomics: {
                                                         ...stream.unitEconomics,
@@ -1060,7 +1150,7 @@ function StreamEditor({
                                             name={`delivery-cost-${stream.id}`}
                                             checked={stream.unitEconomics.deliveryCostModel.type === "perUnitCost"}
                                             onChange={() => {
-                                                onUpdate({
+                                                updateWithHistory({
                                                     ...stream,
                                                     unitEconomics: {
                                                         ...stream.unitEconomics,
@@ -1085,7 +1175,7 @@ function StreamEditor({
                                             suffix="%"
                                             hint="Revenue kept after direct delivery costs"
                                             onChange={(v) =>
-                                                onUpdate({
+                                                updateWithHistory({
                                                     ...stream,
                                                     unitEconomics: {
                                                         ...stream.unitEconomics,
@@ -1102,7 +1192,7 @@ function StreamEditor({
                                             suffix="£"
                                             hint={`Cost per ${stream.revenueUnit}`}
                                             onChange={(v) =>
-                                                onUpdate({
+                                                updateWithHistory({
                                                     ...stream,
                                                     unitEconomics: {
                                                         ...stream.unitEconomics,
@@ -1126,7 +1216,7 @@ function StreamEditor({
                                     <Switch
                                         checked={!!stream.unitEconomics.contractLengthMonths}
                                         onCheckedChange={(on) =>
-                                            onUpdate({
+                                            updateWithHistory({
                                                 ...stream,
                                                 unitEconomics: {
                                                     ...stream.unitEconomics,
@@ -1152,7 +1242,7 @@ function StreamEditor({
                                                 value={stream.unitEconomics.contractLengthMonths}
                                                 suffix="months"
                                                 onChange={(v) =>
-                                                    onUpdate({
+                                                    updateWithHistory({
                                                         ...stream,
                                                         unitEconomics: {
                                                             ...stream.unitEconomics,
@@ -1174,7 +1264,7 @@ function StreamEditor({
                                 <Select
                                     value={stream.unitEconomics.billingFrequency}
                                     onValueChange={(v) =>
-                                        onUpdate({
+                                        updateWithHistory({
                                             ...stream,
                                             unitEconomics: {
                                                 ...stream.unitEconomics,
@@ -1209,7 +1299,7 @@ function StreamEditor({
                                     onChange={(e) => {
                                         const x = Number(e.target.value);
                                         if (Number.isFinite(x))
-                                            onUpdate({
+                                            updateWithHistory({
                                                 ...stream,
                                                 adoptionModel: {
                                                     ...stream.adoptionModel,
@@ -1226,7 +1316,7 @@ function StreamEditor({
                                 value={stream.adoptionModel.acquisitionRate}
                                 hint={`New ${stream.revenueUnit} per month`}
                                 onChange={(v) =>
-                                    onUpdate({
+                                    updateWithHistory({
                                         ...stream,
                                         adoptionModel: { ...stream.adoptionModel, acquisitionRate: v },
                                     })
@@ -1244,7 +1334,7 @@ function StreamEditor({
                                     <Switch
                                         checked={!!stream.adoptionModel.churnRate}
                                         onCheckedChange={(on) =>
-                                            onUpdate({
+                                            updateWithHistory({
                                                 ...stream,
                                                 adoptionModel: {
                                                     ...stream.adoptionModel,
@@ -1262,7 +1352,7 @@ function StreamEditor({
                                             value={stream.adoptionModel.churnRate}
                                             suffix="%"
                                             onChange={(v) =>
-                                                onUpdate({
+                                                updateWithHistory({
                                                     ...stream,
                                                     adoptionModel: { ...stream.adoptionModel, churnRate: v },
                                                 })
@@ -1283,7 +1373,7 @@ function StreamEditor({
                                     <Switch
                                         checked={!!stream.adoptionModel.expansionRate}
                                         onCheckedChange={(on) =>
-                                            onUpdate({
+                                            updateWithHistory({
                                                 ...stream,
                                                 adoptionModel: {
                                                     ...stream.adoptionModel,
@@ -1301,7 +1391,7 @@ function StreamEditor({
                                             value={stream.adoptionModel.expansionRate}
                                             suffix="%"
                                             onChange={(v) =>
-                                                onUpdate({
+                                                updateWithHistory({
                                                     ...stream,
                                                     adoptionModel: { ...stream.adoptionModel, expansionRate: v },
                                                 })
@@ -1332,7 +1422,7 @@ function StreamEditor({
                                     suffix="£"
                                     hint={`Cost to acquire one ${stream.revenueUnit}`}
                                     onChange={(v) =>
-                                        onUpdate({
+                                        updateWithHistory({
                                             ...stream,
                                             acquisitionCosts: { ...stream.acquisitionCosts, cacPerUnit: v },
                                         })
@@ -1350,7 +1440,7 @@ function StreamEditor({
                                         <Switch
                                             checked={!!stream.acquisitionCosts.onboardingCostPerUnit}
                                             onCheckedChange={(on) =>
-                                                onUpdate({
+                                                updateWithHistory({
                                                     ...stream,
                                                     acquisitionCosts: {
                                                         ...stream.acquisitionCosts,
@@ -1370,7 +1460,7 @@ function StreamEditor({
                                                 value={stream.acquisitionCosts.onboardingCostPerUnit}
                                                 suffix="£"
                                                 onChange={(v) =>
-                                                    onUpdate({
+                                                    updateWithHistory({
                                                         ...stream,
                                                         acquisitionCosts: {
                                                             ...stream.acquisitionCosts,
