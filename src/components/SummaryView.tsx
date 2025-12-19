@@ -61,7 +61,7 @@ export function SummaryView({ data, month }: { data: VentureData; month: number 
     }, []);
 
     const profitableMonthIdx = useMemo(() => firstIndexWhere(series, (r) => r.profit > 0), [series]);
-    const cashBreakevenIdx = useMemo(() => firstIndexWhere(series, (r) => r.cash > 0), [series]);
+    const roiBreakevenIdx = useMemo(() => firstIndexWhere(series, (r) => (r.cumRevenue - r.cumCosts) >= 0), [series]);
 
     const roiByYear = useMemo(() => {
         const years = [1, 2, 3];
@@ -123,15 +123,15 @@ export function SummaryView({ data, month }: { data: VentureData; month: number 
                         </div>
                         <Separator />
                         <div>
-                            <div className="text-xs text-muted-foreground">ROI / Payback (first month cumulative cash &gt; 0)</div>
+                            <div className="text-xs text-muted-foreground">ROI / Payback (first month cumulative profit ≥ 0)</div>
                             <div className="text-lg font-semibold">
-                                {cashBreakevenIdx === undefined
+                                {roiBreakevenIdx === undefined
                                     ? "Not within horizon"
-                                    : `${formatMonthLabel(data.meta.start, cashBreakevenIdx)} (m${cashBreakevenIdx})`}
+                                    : `${formatMonthLabel(data.meta.start, roiBreakevenIdx)} (m${roiBreakevenIdx})`}
                             </div>
                         </div>
                         <div className="text-sm text-muted-foreground">
-                            ROI definition: cumulative cash / cumulative costs-to-date. EBITDA ≈ profit (no depreciation/amortization modelled yet).
+                            Cumulative profit = cumulative revenue - cumulative costs. EBITDA ≈ profit (no depreciation/amortization modelled yet).
                         </div>
                     </CardContent>
                 </Card>
