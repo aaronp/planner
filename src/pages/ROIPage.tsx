@@ -6,12 +6,14 @@ import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, TrendingUp, TrendingDown, PlayCircle } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from "recharts";
+import { AlertCircle, TrendingUp, TrendingDown, PlayCircle, Sparkles, ArrowRight } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart, BarChart, Bar } from "recharts";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { VentureData } from "../types";
 import { fmtCurrency } from "../utils/formatUtils";
 import { computeSeries } from "../utils/modelEngine";
 import { runMonteCarloSimulation } from "../utils/monteCarlo";
+import { runOptimization, type OptimizationResult, type OptimizationGoal } from "../utils/optimization";
 import { useRisk } from "../contexts/RiskContext";
 
 type ROIPageProps = {
@@ -27,6 +29,19 @@ export function ROIPage({ data, month }: ROIPageProps) {
     const [discountRate, setDiscountRate] = useState(15);
     const [monteCarloResults, setMonteCarloResults] = useState<ReturnType<typeof runMonteCarloSimulation> | null>(null);
     const [isRunningSimulation, setIsRunningSimulation] = useState(false);
+
+    // Optimization state
+    const [optimizationResults, setOptimizationResults] = useState<OptimizationResult | null>(null);
+    const [isRunningOptimization, setIsRunningOptimization] = useState(false);
+    const [optimizationGoal, setOptimizationGoal] = useState<OptimizationGoal>("balanced");
+    const [optimizationParams, setOptimizationParams] = useState({
+        streamPrices: true,
+        streamCAC: true,
+        streamAcquisitionRate: true,
+        streamChurn: true,
+        fixedCosts: true,
+    });
+    const [maxAdjustment, setMaxAdjustment] = useState(30);
 
     const series = useMemo(
         () => computeSeries(data, multipliers.tasks, multipliers.fixedCosts, multipliers.revenueStreams, streamDistributions),
@@ -49,6 +64,26 @@ export function ROIPage({ data, month }: ROIPageProps) {
             );
             setMonteCarloResults(results);
             setIsRunningSimulation(false);
+        }, 100);
+    };
+
+    // Optimization handler
+    const handleRunOptimization = () => {
+        setIsRunningOptimization(true);
+        // Run in a timeout to allow UI to update
+        setTimeout(() => {
+            const results = runOptimization(
+                data,
+                optimizationGoal,
+                optimizationParams,
+                maxAdjustment,
+                multipliers.tasks,
+                multipliers.fixedCosts,
+                multipliers.revenueStreams,
+                streamDistributions
+            );
+            setOptimizationResults(results);
+            setIsRunningOptimization(false);
         }, 100);
     };
 
@@ -175,6 +210,9 @@ export function ROIPage({ data, month }: ROIPageProps) {
                     </TabsTrigger>
                     <TabsTrigger value="simulation" className="rounded-2xl">
                         Monte Carlo
+                    </TabsTrigger>
+                    <TabsTrigger value="optimization" className="rounded-2xl">
+                        Optimization
                     </TabsTrigger>
                 </TabsList>
 
@@ -772,6 +810,308 @@ export function ROIPage({ data, month }: ROIPageProps) {
                                 </div>
                             </CardContent>
                         )}
+                    </Card>
+                </TabsContent>
+
+                {/* Optimization Tab */}
+                <TabsContent value="optimization" className="mt-4 space-y-4">
+                    <Card className="rounded-2xl shadow-sm">
+                        <CardHeader>
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <CardTitle>Parameter Optimization</CardTitle>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        Find optimal parameter adjustments to improve profitability and ROI
+                                    </p>
+                                </div>
+                                <Button
+                                    onClick={handleRunOptimization}
+                                    disabled={isRunningOptimization}
+                                    className="rounded-2xl"
+                                >
+                                    <Sparkles className="h-4 w-4 mr-2" />
+                                    {isRunningOptimization ? "Optimizing..." : "Run Optimization"}
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {/* Optimization Configuration */}
+                                    <Card className="rounded-2xl mb-4">
+                                        <CardContent className="p-4">
+                                            <div className="space-y-4">
+                                                {/* Optimization Goal */}
+                                                <div>
+                                                    <Label className="text-sm font-medium mb-2 block">Optimization Goal</Label>
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            size="sm"
+                                                            variant={optimizationGoal === "minimize_profitability_time" ? "default" : "outline"}
+                                                            onClick={() => setOptimizationGoal("minimize_profitability_time")}
+                                                            className="rounded-xl flex-1"
+                                                        >
+                                                            Minimize Time to Profitability
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant={optimizationGoal === "maximize_roi" ? "default" : "outline"}
+                                                            onClick={() => setOptimizationGoal("maximize_roi")}
+                                                            className="rounded-xl flex-1"
+                                                        >
+                                                            Maximize ROI
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant={optimizationGoal === "balanced" ? "default" : "outline"}
+                                                            onClick={() => setOptimizationGoal("balanced")}
+                                                            className="rounded-xl flex-1"
+                                                        >
+                                                            Balanced
+                                                        </Button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Adjustable Parameters */}
+                                                <div>
+                                                    <Label className="text-sm font-medium mb-2 block">Adjustable Parameters</Label>
+                                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                                        <div className="flex items-center space-x-2">
+                                                            <Checkbox
+                                                                id="opt-prices"
+                                                                checked={optimizationParams.streamPrices}
+                                                                onCheckedChange={(checked) =>
+                                                                    setOptimizationParams({ ...optimizationParams, streamPrices: !!checked })
+                                                                }
+                                                            />
+                                                            <label htmlFor="opt-prices" className="text-sm cursor-pointer">
+                                                                Unit Prices
+                                                            </label>
+                                                        </div>
+                                                        <div className="flex items-center space-x-2">
+                                                            <Checkbox
+                                                                id="opt-cac"
+                                                                checked={optimizationParams.streamCAC}
+                                                                onCheckedChange={(checked) =>
+                                                                    setOptimizationParams({ ...optimizationParams, streamCAC: !!checked })
+                                                                }
+                                                            />
+                                                            <label htmlFor="opt-cac" className="text-sm cursor-pointer">
+                                                                CAC per Unit
+                                                            </label>
+                                                        </div>
+                                                        <div className="flex items-center space-x-2">
+                                                            <Checkbox
+                                                                id="opt-acq-rate"
+                                                                checked={optimizationParams.streamAcquisitionRate}
+                                                                onCheckedChange={(checked) =>
+                                                                    setOptimizationParams({ ...optimizationParams, streamAcquisitionRate: !!checked })
+                                                                }
+                                                            />
+                                                            <label htmlFor="opt-acq-rate" className="text-sm cursor-pointer">
+                                                                Acquisition Rate
+                                                            </label>
+                                                        </div>
+                                                        <div className="flex items-center space-x-2">
+                                                            <Checkbox
+                                                                id="opt-churn"
+                                                                checked={optimizationParams.streamChurn}
+                                                                onCheckedChange={(checked) =>
+                                                                    setOptimizationParams({ ...optimizationParams, streamChurn: !!checked })
+                                                                }
+                                                            />
+                                                            <label htmlFor="opt-churn" className="text-sm cursor-pointer">
+                                                                Churn Rate
+                                                            </label>
+                                                        </div>
+                                                        <div className="flex items-center space-x-2">
+                                                            <Checkbox
+                                                                id="opt-fixed-costs"
+                                                                checked={optimizationParams.fixedCosts}
+                                                                onCheckedChange={(checked) =>
+                                                                    setOptimizationParams({ ...optimizationParams, fixedCosts: !!checked })
+                                                                }
+                                                            />
+                                                            <label htmlFor="opt-fixed-costs" className="text-sm cursor-pointer">
+                                                                Fixed Costs
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Max Adjustment Percentage */}
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <Label className="text-sm font-medium">Maximum Adjustment</Label>
+                                                        <span className="text-sm font-semibold">±{maxAdjustment}%</span>
+                                                    </div>
+                                                    <Slider
+                                                        value={[maxAdjustment]}
+                                                        onValueChange={([value]) => setMaxAdjustment(value)}
+                                                        min={5}
+                                                        max={50}
+                                                        step={5}
+                                                        className="w-full"
+                                                    />
+                                                    <div className="text-xs text-muted-foreground mt-1">
+                                                        Maximum percentage change allowed for each parameter
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+
+                                    {/* Optimization Results */}
+                                    {optimizationResults && (
+                                        <div className="space-y-4">
+                                            {/* Improvement Summary */}
+                                            <div className="grid md:grid-cols-3 gap-4">
+                                                <Card className="rounded-2xl">
+                                                    <CardContent className="p-4">
+                                                        <div className="text-sm font-medium mb-1">Time to Profitability</div>
+                                                        <div className="flex items-baseline gap-2">
+                                                            <span className="text-2xl font-bold">
+                                                                {optimizationResults.optimizedMetrics.profitableMonth ?? "N/A"}
+                                                            </span>
+                                                            {optimizationResults.improvements.profitabilityMonths > 0 && (
+                                                                <Badge variant="default" className="text-xs">
+                                                                    -{optimizationResults.improvements.profitabilityMonths} months
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground mt-1">
+                                                            Current: {optimizationResults.currentMetrics.profitableMonth ?? "N/A"} months
+                                                        </div>
+                                                    </CardContent>
+                                                </Card>
+
+                                                <Card className="rounded-2xl">
+                                                    <CardContent className="p-4">
+                                                        <div className="text-sm font-medium mb-1">ROI Breakeven</div>
+                                                        <div className="flex items-baseline gap-2">
+                                                            <span className="text-2xl font-bold">
+                                                                {optimizationResults.optimizedMetrics.roiBreakevenMonth ?? "N/A"}
+                                                            </span>
+                                                            {optimizationResults.improvements.roiBreakevenMonths > 0 && (
+                                                                <Badge variant="default" className="text-xs">
+                                                                    -{optimizationResults.improvements.roiBreakevenMonths} months
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground mt-1">
+                                                            Current: {optimizationResults.currentMetrics.roiBreakevenMonth ?? "N/A"} months
+                                                        </div>
+                                                    </CardContent>
+                                                </Card>
+
+                                                <Card className="rounded-2xl">
+                                                    <CardContent className="p-4">
+                                                        <div className="text-sm font-medium mb-1">5-Year ROI</div>
+                                                        <div className="flex items-baseline gap-2">
+                                                            <span className="text-2xl font-bold">
+                                                                {optimizationResults.optimizedMetrics.roi5Year.toFixed(1)}%
+                                                            </span>
+                                                            {optimizationResults.improvements.roi5YearDelta > 0 && (
+                                                                <Badge variant="default" className="text-xs">
+                                                                    +{optimizationResults.improvements.roi5YearDelta.toFixed(1)}%
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground mt-1">
+                                                            Current: {optimizationResults.currentMetrics.roi5Year.toFixed(1)}%
+                                                        </div>
+                                                    </CardContent>
+                                                </Card>
+                                            </div>
+
+                                            {/* Recommendations */}
+                                            {optimizationResults.recommendations.length > 0 && (
+                                                <Card className="rounded-2xl">
+                                                    <CardHeader>
+                                                        <CardTitle className="text-base">Recommended Parameter Adjustments</CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="space-y-3">
+                                                            {optimizationResults.recommendations.map((rec, idx) => (
+                                                                <div
+                                                                    key={idx}
+                                                                    className="flex items-center justify-between p-3 bg-muted/30 rounded-xl"
+                                                                >
+                                                                    <div className="flex-1">
+                                                                        <div className="font-medium text-sm">{rec.parameter}</div>
+                                                                        <div className="text-xs text-muted-foreground mt-1">
+                                                                            {fmtCurrency(rec.currentValue, currency)} <ArrowRight className="inline h-3 w-3 mx-1" />{" "}
+                                                                            {fmtCurrency(rec.suggestedValue, currency)}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="text-right ml-4">
+                                                                        <Badge
+                                                                            variant={rec.changePercent > 0 ? "default" : "secondary"}
+                                                                            className="text-xs"
+                                                                        >
+                                                                            {rec.changePercent > 0 ? "+" : ""}
+                                                                            {rec.changePercent.toFixed(1)}%
+                                                                        </Badge>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </CardContent>
+                                                </Card>
+                                            )}
+
+                                            {/* Sensitivity Analysis */}
+                                            {optimizationResults.sensitivityAnalysis.length > 0 && (
+                                                <Card className="rounded-2xl">
+                                                    <CardHeader>
+                                                        <CardTitle className="text-base">Parameter Sensitivity Analysis</CardTitle>
+                                                        <p className="text-sm text-muted-foreground">
+                                                            Impact of 10% change in each parameter (sorted by impact)
+                                                        </p>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <ResponsiveContainer width="100%" height={300}>
+                                                            <BarChart
+                                                                data={optimizationResults.sensitivityAnalysis.slice(0, 10)}
+                                                                layout="vertical"
+                                                                margin={{ left: 150 }}
+                                                            >
+                                                                <CartesianGrid strokeDasharray="3 3" />
+                                                                <XAxis type="number" />
+                                                                <YAxis
+                                                                    dataKey="parameter"
+                                                                    type="category"
+                                                                    tick={{ fontSize: 11 }}
+                                                                    width={140}
+                                                                    tickFormatter={(value, index) => {
+                                                                        const item = optimizationResults.sensitivityAnalysis[index];
+                                                                        return `${item?.streamOrCostName?.substring(0, 15) || ""} - ${value}`;
+                                                                    }}
+                                                                />
+                                                                <Tooltip />
+                                                                <Legend />
+                                                                <Bar
+                                                                    dataKey="profitabilityImpact"
+                                                                    fill="#3b82f6"
+                                                                    name="Profitability (months)"
+                                                                />
+                                                                <Bar dataKey="roiImpact" fill="#10b981" name="ROI Impact (%)" />
+                                                            </BarChart>
+                                                        </ResponsiveContainer>
+                                                    </CardContent>
+                                                </Card>
+                                            )}
+
+                                            {optimizationResults.recommendations.length === 0 && (
+                                                <Alert>
+                                                    <AlertCircle className="h-4 w-4" />
+                                                    <AlertDescription>
+                                                        No improvements found within the specified constraints. Try increasing the maximum
+                                                        adjustment percentage or enabling more parameters.
+                                                    </AlertDescription>
+                                                </Alert>
+                                            )}
+                                        </div>
+                                    )}
+                        </CardContent>
                     </Card>
                 </TabsContent>
             </Tabs>

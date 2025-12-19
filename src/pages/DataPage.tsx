@@ -6,8 +6,9 @@ import { Download, Upload, RefreshCw, Edit, Save, X, Trash2, FolderOpen } from "
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 import type { VentureData } from "../types";
-import { DEFAULT, getSavedModels, saveModel, deleteModel, loadModel, type SavedModel } from "../utils/storage";
+import { DEFAULT, getSavedModels, saveModel, deleteModel, loadModel, type SavedModel, type RiskSettings } from "../utils/storage";
 import { useRisk } from "../contexts/RiskContext";
+import { ImportModelModal } from "../components/ImportModelModal";
 
 type DataPageProps = {
     data: VentureData;
@@ -27,6 +28,7 @@ export function DataPage({ data, setData }: DataPageProps) {
     const [savedModels, setSavedModels] = useState<SavedModel[]>([]);
     const [saveModelName, setSaveModelName] = useState("");
     const [saveSuccess, setSaveSuccess] = useState(false);
+    const [importModalOpen, setImportModalOpen] = useState(false);
 
     // Load saved models on mount
     useEffect(() => {
@@ -148,6 +150,17 @@ export function DataPage({ data, setData }: DataPageProps) {
         }
     };
 
+    const handleImportFromModal = (importedData: VentureData, riskSettings?: RiskSettings) => {
+        setData(importedData);
+
+        // Restore risk settings if provided
+        if (riskSettings) {
+            setMultipliers(riskSettings.multipliers);
+            setDistributionSelection(riskSettings.distributionSelection);
+            setStreamDistributions(riskSettings.streamDistributions);
+        }
+    };
+
     return (
         <div className="space-y-4">
             <Card className="rounded-2xl shadow-sm">
@@ -225,8 +238,21 @@ export function DataPage({ data, setData }: DataPageProps) {
 
                     {/* List of saved models */}
                     <div>
-                        <div className="text-sm font-medium mb-3">
-                            Saved Models ({savedModels.length})
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="text-sm font-medium">
+                                Saved Models ({savedModels.length})
+                            </div>
+                            {savedModels.length > 0 && (
+                                <Button
+                                    size="sm"
+                                    variant="default"
+                                    className="rounded-xl"
+                                    onClick={() => setImportModalOpen(true)}
+                                >
+                                    <FolderOpen className="h-4 w-4 mr-2" />
+                                    Import from Model
+                                </Button>
+                            )}
                         </div>
                         {savedModels.length === 0 ? (
                             <div className="rounded-2xl border p-6 text-center text-sm text-muted-foreground">
@@ -254,15 +280,6 @@ export function DataPage({ data, setData }: DataPageProps) {
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2 ml-4">
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                className="rounded-xl"
-                                                onClick={() => handleLoadModel(model.id)}
-                                            >
-                                                <FolderOpen className="h-4 w-4 mr-2" />
-                                                Load
-                                            </Button>
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
@@ -338,6 +355,14 @@ export function DataPage({ data, setData }: DataPageProps) {
                     )}
                 </CardContent>
             </Card>
+
+            <ImportModelModal
+                open={importModalOpen}
+                onOpenChange={setImportModalOpen}
+                savedModels={savedModels}
+                currentData={data}
+                onImport={handleImportFromModal}
+            />
         </div>
     );
 }
