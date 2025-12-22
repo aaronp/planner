@@ -13,6 +13,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import type { VentureData } from "../types";
 import { computeTaskDates } from "../utils/modelEngine";
 import { streamRevenueAtMonth, streamAcquisitionCostsAtMonth, taskCostAtMonth, fixedCostsAtMonth } from "../utils/logic";
@@ -34,6 +36,41 @@ export function GraphPage({ data }: GraphPageProps) {
     // UI state
     const [isLogarithmic, setIsLogarithmic] = useState(false);
     const [showBalance, setShowBalance] = useState(true);
+    const [showFilters, setShowFilters] = useState(false);
+
+    // Visibility state for revenue streams
+    const [visibleStreams, setVisibleStreams] = useState<Set<string>>(() => {
+        const allStreamIds = new Set(data.revenueStreams?.map(s => s.id) || []);
+        return allStreamIds;
+    });
+
+    // Visibility state for costs (tasks + fixed costs)
+    const [visibleCosts, setVisibleCosts] = useState<Set<string>>(() => {
+        const allCostIds = new Set([
+            ...data.tasks.map(t => `cost_${t.id}`),
+            ...(data.costModel?.fixedMonthlyCosts?.map(fc => `fixed_${fc.id}`) || [])
+        ]);
+        return allCostIds;
+    });
+
+    // Update visibility sets when data changes
+    useEffect(() => {
+        setVisibleStreams(prev => {
+            const allStreamIds = new Set(data.revenueStreams?.map(s => s.id) || []);
+            // Keep only existing streams that were previously visible
+            const updated = new Set([...allStreamIds].filter(id => prev.has(id) || prev.size === 0));
+            return updated.size > 0 ? updated : allStreamIds;
+        });
+
+        setVisibleCosts(prev => {
+            const allCostIds = new Set([
+                ...data.tasks.map(t => `cost_${t.id}`),
+                ...(data.costModel?.fixedMonthlyCosts?.map(fc => `fixed_${fc.id}`) || [])
+            ]);
+            const updated = new Set([...allCostIds].filter(id => prev.has(id) || prev.size === 0));
+            return updated.size > 0 ? updated : allCostIds;
+        });
+    }, [data]);
 
     // Load stream colors from localStorage
     const [streamColors, setStreamColors] = useState<Map<string, string>>(() => {
@@ -119,6 +156,51 @@ export function GraphPage({ data }: GraphPageProps) {
         });
     }, [data, horizonMonths, start, computedTasks, multipliers, streamDistributions]);
 
+    // Toggle helpers
+    const toggleStream = (streamId: string) => {
+        setVisibleStreams(prev => {
+            const updated = new Set(prev);
+            if (updated.has(streamId)) {
+                updated.delete(streamId);
+            } else {
+                updated.add(streamId);
+            }
+            return updated;
+        });
+    };
+
+    const toggleCost = (costId: string) => {
+        setVisibleCosts(prev => {
+            const updated = new Set(prev);
+            if (updated.has(costId)) {
+                updated.delete(costId);
+            } else {
+                updated.add(costId);
+            }
+            return updated;
+        });
+    };
+
+    const toggleAllStreams = () => {
+        if (visibleStreams.size === data.revenueStreams?.length) {
+            setVisibleStreams(new Set());
+        } else {
+            setVisibleStreams(new Set(data.revenueStreams?.map(s => s.id) || []));
+        }
+    };
+
+    const toggleAllCosts = () => {
+        const allCostIds = [
+            ...data.tasks.map(t => `cost_${t.id}`),
+            ...(data.costModel?.fixedMonthlyCosts?.map(fc => `fixed_${fc.id}`) || [])
+        ];
+        if (visibleCosts.size === allCostIds.length) {
+            setVisibleCosts(new Set());
+        } else {
+            setVisibleCosts(new Set(allCostIds));
+        }
+    };
+
     return (
         <div className="grid gap-4">
             <Card className="rounded-2xl shadow-sm">
@@ -146,9 +228,121 @@ export function GraphPage({ data }: GraphPageProps) {
                                     Show Balance
                                 </Label>
                             </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowFilters(!showFilters)}
+                                className="rounded-xl"
+                            >
+                                {showFilters ? "Hide Filters" : "Show Filters"}
+                            </Button>
                         </div>
                     </div>
                 </CardHeader>
+                {showFilters && (
+                    <CardContent className="border-t pt-4">
+                        <div className="grid md:grid-cols-2 gap-6">
+                            {/* Revenue Streams */}
+                            <div>
+                                <div className="flex items-center justify-between mb-3">
+                                    <Label className="text-sm font-medium">Revenue Streams</Label>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={toggleAllStreams}
+                                        className="h-7 text-xs"
+                                    >
+                                        {visibleStreams.size === data.revenueStreams?.length ? "Deselect All" : "Select All"}
+                                    </Button>
+                                </div>
+                                <div className="space-y-2">
+                                    {data.revenueStreams?.map((stream) => (
+                                        <div key={stream.id} className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id={`stream-${stream.id}`}
+                                                checked={visibleStreams.has(stream.id)}
+                                                onCheckedChange={() => toggleStream(stream.id)}
+                                            />
+                                            <label
+                                                htmlFor={`stream-${stream.id}`}
+                                                className="text-sm cursor-pointer flex items-center gap-2"
+                                            >
+                                                <div
+                                                    className="w-3 h-3 rounded"
+                                                    style={{ backgroundColor: streamColors.get(stream.id) || "#4f46e5" }}
+                                                />
+                                                {stream.name}
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Costs */}
+                            <div>
+                                <div className="flex items-center justify-between mb-3">
+                                    <Label className="text-sm font-medium">Costs</Label>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={toggleAllCosts}
+                                        className="h-7 text-xs"
+                                    >
+                                        {visibleCosts.size === (data.tasks.length + (data.costModel?.fixedMonthlyCosts?.length || 0)) ? "Deselect All" : "Select All"}
+                                    </Button>
+                                </div>
+                                <div className="space-y-2">
+                                    {computedTasks.map((task, idx) => {
+                                        const costId = `cost_${task.id}`;
+                                        const color = `hsl(0, 70%, ${45 + (idx % 3) * 10}%)`;
+                                        return (
+                                            <div key={task.id} className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id={costId}
+                                                    checked={visibleCosts.has(costId)}
+                                                    onCheckedChange={() => toggleCost(costId)}
+                                                />
+                                                <label
+                                                    htmlFor={costId}
+                                                    className="text-sm cursor-pointer flex items-center gap-2"
+                                                >
+                                                    <div
+                                                        className="w-3 h-3 rounded"
+                                                        style={{ backgroundColor: color }}
+                                                    />
+                                                    {task.name}
+                                                </label>
+                                            </div>
+                                        );
+                                    })}
+                                    {data.costModel?.fixedMonthlyCosts?.map((fixedCost, idx) => {
+                                        const costId = `fixed_${fixedCost.id}`;
+                                        const color = `hsl(280, 50%, ${45 + (idx % 3) * 10}%)`;
+                                        return (
+                                            <div key={fixedCost.id} className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id={costId}
+                                                    checked={visibleCosts.has(costId)}
+                                                    onCheckedChange={() => toggleCost(costId)}
+                                                />
+                                                <label
+                                                    htmlFor={costId}
+                                                    className="text-sm cursor-pointer flex items-center gap-2"
+                                                >
+                                                    <div
+                                                        className="w-3 h-3 rounded"
+                                                        style={{ backgroundColor: color }}
+                                                    />
+                                                    {fixedCost.name} (Fixed)
+                                                </label>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                )}
                 <CardContent className="h-[600px]">
                     <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={chartData} margin={{ left: 12, right: 12, top: 10, bottom: 0 }}>
@@ -174,6 +368,7 @@ export function GraphPage({ data }: GraphPageProps) {
 
                             {/* Revenue streams - stacked */}
                             {data.revenueStreams?.map((stream) => {
+                                if (!visibleStreams.has(stream.id)) return null;
                                 const color = streamColors.get(stream.id) || "#4f46e5";
                                 return (
                                     <Area
@@ -191,12 +386,14 @@ export function GraphPage({ data }: GraphPageProps) {
 
                             {/* Costs - stacked */}
                             {computedTasks.map((task, idx) => {
+                                const costId = `cost_${task.id}`;
+                                if (!visibleCosts.has(costId)) return null;
                                 const color = `hsl(0, 70%, ${45 + (idx % 3) * 10}%)`;
                                 return (
                                     <Area
                                         key={task.id}
                                         type="monotone"
-                                        dataKey={`cost_${task.id}`}
+                                        dataKey={costId}
                                         name={`${task.name} (Cost)`}
                                         stackId="costs"
                                         stroke={color}
@@ -208,12 +405,14 @@ export function GraphPage({ data }: GraphPageProps) {
 
                             {/* Fixed costs - stacked with other costs */}
                             {data.costModel?.fixedMonthlyCosts?.map((fixedCost, idx) => {
+                                const costId = `fixed_${fixedCost.id}`;
+                                if (!visibleCosts.has(costId)) return null;
                                 const color = `hsl(280, 50%, ${45 + (idx % 3) * 10}%)`;
                                 return (
                                     <Area
                                         key={fixedCost.id}
                                         type="monotone"
-                                        dataKey={`fixed_${fixedCost.id}`}
+                                        dataKey={costId}
                                         name={`${fixedCost.name} (Fixed)`}
                                         stackId="costs"
                                         stroke={color}
