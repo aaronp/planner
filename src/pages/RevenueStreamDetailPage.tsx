@@ -1,13 +1,18 @@
 import { useParams, useNavigate } from "react-router-dom";
-import type { VentureData, RevenueStream, TimelineEvent, Assumption, Risk } from "../types";
-import { Card, CardContent } from "@/components/ui/card";
+import type { VentureData, RevenueStream, TimelineEvent, Assumption, Risk, Distribution, PricingModel } from "../types";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "../components/DataTable";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trash2, TrendingUp, ChevronLeft, ChevronRight } from "lucide-react";
+import { fmtCurrency } from "../utils/formatUtils";
+import { calculateStreamMonthlyMetrics, getDistributionMode } from "../utils/logic";
+import { Line, LineChart, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, Legend } from "recharts";
+import { useMemo, useState } from "react";
 
 type RevenueStreamDetailPageProps = {
     data: VentureData;
@@ -15,11 +20,129 @@ type RevenueStreamDetailPageProps = {
     setTimeline: (timeline: TimelineEvent[]) => void;
 };
 
+// Helper to get currency symbol
+function getCurrencySymbol(currency?: string): string {
+    if (!currency) return "";
+    const symbols: Record<string, string> = {
+        USD: "$",
+        GBP: "£",
+        EUR: "€",
+        JPY: "¥",
+        CNY: "¥",
+    };
+    return symbols[currency] || currency;
+}
+
+// Helper to get value from distribution based on selection
+function getDistributionValue(dist: Distribution, selection: "min" | "mode" | "max"): number {
+    if (dist.type === "triangular") {
+        return selection === "min" ? dist.min : selection === "max" ? dist.max : dist.mode;
+    } else if (dist.type === "normal") {
+        return dist.mean;
+    } else if (dist.type === "lognormal") {
+        return selection === "min" ? dist.min : selection === "max" ? dist.max : dist.mode;
+    }
+    return 0;
+}
+
+// Helper to convert distribution to fixed value
+function distributionToFixed(dist: Distribution, selection: "min" | "mode" | "max"): Distribution {
+    const value = getDistributionValue(dist, selection);
+    return { type: "triangular", min: value, mode: value, max: value };
+}
+
+// Helper component for editing distributions
+function DistributionInput({
+    label,
+    value,
+    onChange,
+    currency,
+    isPercentage,
+}: {
+    label: string;
+    value: Distribution;
+    onChange: (dist: Distribution) => void;
+    currency?: string;
+    isPercentage?: boolean;
+}) {
+    const suffix = isPercentage ? "%" : "";
+    const prefix = currency && !isPercentage ? getCurrencySymbol(currency) : "";
+
+    return (
+        <div className="space-y-2">
+            <Label>{label}</Label>
+            <div className="grid grid-cols-3 gap-2">
+                <div>
+                    <Label className="text-xs text-muted-foreground">Min</Label>
+                    <div className="relative">
+                        {prefix && <span className="absolute left-3 top-2 text-sm text-muted-foreground">{prefix}</span>}
+                        <Input
+                            type="number"
+                            value={value.min}
+                            onChange={(e) => onChange({ ...value, min: parseFloat(e.target.value) || 0 })}
+                            className={`rounded-xl text-right ${prefix ? "pl-8 pr-3" : ""} ${suffix ? "pr-8" : ""}`}
+                        />
+                        {suffix && <span className="absolute right-3 top-2 text-sm text-muted-foreground">{suffix}</span>}
+                    </div>
+                </div>
+                <div>
+                    <Label className="text-xs text-muted-foreground">Mode</Label>
+                    <div className="relative">
+                        {prefix && <span className="absolute left-3 top-2 text-sm text-muted-foreground">{prefix}</span>}
+                        <Input
+                            type="number"
+                            value={value.mode}
+                            onChange={(e) => onChange({ ...value, mode: parseFloat(e.target.value) || 0 })}
+                            className={`rounded-xl text-right ${prefix ? "pl-8 pr-3" : ""} ${suffix ? "pr-8" : ""}`}
+                        />
+                        {suffix && <span className="absolute right-3 top-2 text-sm text-muted-foreground">{suffix}</span>}
+                    </div>
+                </div>
+                <div>
+                    <Label className="text-xs text-muted-foreground">Max</Label>
+                    <div className="relative">
+                        {prefix && <span className="absolute left-3 top-2 text-sm text-muted-foreground">{prefix}</span>}
+                        <Input
+                            type="number"
+                            value={value.max}
+                            onChange={(e) => onChange({ ...value, max: parseFloat(e.target.value) || 0 })}
+                            className={`rounded-xl text-right ${prefix ? "pl-8 pr-3" : ""} ${suffix ? "pr-8" : ""}`}
+                        />
+                        {suffix && <span className="absolute right-3 top-2 text-sm text-muted-foreground">{suffix}</span>}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }: RevenueStreamDetailPageProps) {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
 
+    // Collapsible panel state
+    const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+    const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+
+    // Preview distribution selection
+    const [previewDistribution, setPreviewDistribution] = useState<"min" | "mode" | "max">("mode");
+
     const stream = (data.revenueStreams ?? []).find((s) => s.id === id);
+
+    // Update stream helper
+    const updateStream = (updates: Partial<RevenueStream>) => {
+        const streams = data.revenueStreams ?? [];
+        setRevenueStreams(streams.map((s) => (s.id === id ? { ...s, ...updates } : s)));
+    };
+
+    // Delete stream
+    const handleDelete = () => {
+        if (confirm(`Are you sure you want to delete "${stream?.name}"?`)) {
+            const streams = data.revenueStreams ?? [];
+            setRevenueStreams(streams.filter((s) => s.id !== id));
+            navigate("/revenue-streams");
+        }
+    };
 
     // Helper functions to get next IDs for assumptions and risks in this stream
     const getNextAssumptionId = () => {
@@ -48,26 +171,78 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
 
     // Update functions for assumptions and risks
     const setAssumptions = (assumptions: Assumption[]) => {
-        const streams = data.revenueStreams ?? [];
-        setRevenueStreams(
-            streams.map((s) => (s.id === id ? { ...s, assumptions } : s))
-        );
+        updateStream({ assumptions });
     };
 
     const setRisks = (risks: Risk[]) => {
-        const streams = data.revenueStreams ?? [];
-        setRevenueStreams(
-            streams.map((s) => (s.id === id ? { ...s, risks } : s))
-        );
+        updateStream({ risks });
     };
+
+    // Calculate preview data
+    const previewData = useMemo(() => {
+        if (!stream) return [];
+
+        // Create a modified stream with fixed distribution values based on selection
+        const previewStream: RevenueStream = {
+            ...stream,
+            unitEconomics: {
+                ...stream.unitEconomics,
+                pricePerUnit: distributionToFixed(stream.unitEconomics.pricePerUnit, previewDistribution),
+                deliveryCostModel: stream.unitEconomics.deliveryCostModel.type === "grossMargin"
+                    ? {
+                        type: "grossMargin",
+                        marginPct: distributionToFixed(stream.unitEconomics.deliveryCostModel.marginPct, previewDistribution),
+                    }
+                    : {
+                        type: "perUnitCost",
+                        costPerUnit: distributionToFixed(stream.unitEconomics.deliveryCostModel.costPerUnit, previewDistribution),
+                    },
+            },
+            adoptionModel: {
+                ...stream.adoptionModel,
+                acquisitionRate: distributionToFixed(stream.adoptionModel.acquisitionRate, previewDistribution),
+                churnRate: stream.adoptionModel.churnRate
+                    ? distributionToFixed(stream.adoptionModel.churnRate, previewDistribution)
+                    : undefined,
+                expansionRate: stream.adoptionModel.expansionRate
+                    ? distributionToFixed(stream.adoptionModel.expansionRate, previewDistribution)
+                    : undefined,
+            },
+            acquisitionCosts: {
+                cacPerUnit: distributionToFixed(stream.acquisitionCosts.cacPerUnit, previewDistribution),
+                onboardingCostPerUnit: stream.acquisitionCosts.onboardingCostPerUnit
+                    ? distributionToFixed(stream.acquisitionCosts.onboardingCostPerUnit, previewDistribution)
+                    : undefined,
+            },
+        };
+
+        const result = [];
+        for (let i = 0; i < data.meta.horizonMonths; i++) {
+            const metrics = calculateStreamMonthlyMetrics(
+                previewStream,
+                i,
+                data.timeline ?? []
+            );
+            result.push({
+                month: i,
+                revenue: metrics.grossRevenue,
+                deliveryCosts: metrics.deliveryCosts,
+                acquisitionCosts: metrics.acquisitionCosts.total,
+                costs: metrics.totalCosts,
+                profit: metrics.netProfit,
+                users: metrics.units,
+            });
+        }
+        return result;
+    }, [stream, data.meta.horizonMonths, data.timeline, previewDistribution]);
 
     if (!stream) {
         return (
             <Card className="rounded-2xl shadow-sm mt-4">
                 <CardContent className="p-8 text-center">
                     <p className="text-lg text-muted-foreground">Revenue stream not found</p>
-                    <Button onClick={() => navigate("/data")} className="mt-4 rounded-2xl">
-                        Back to Data
+                    <Button onClick={() => navigate("/revenue-streams")} className="mt-4 rounded-2xl">
+                        Back to Revenue Streams
                     </Button>
                 </CardContent>
             </Card>
@@ -76,103 +251,404 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center gap-3">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => navigate("/revenue-streams")}
+                        className="rounded-2xl"
+                    >
+                        <ArrowLeft className="h-5 w-5" />
+                    </Button>
+                    <div>
+                        <h2 className="text-2xl font-semibold">{stream.name}</h2>
+                        <p className="text-sm text-muted-foreground">
+                            {stream.pricingModel} · {stream.revenueUnit}
+                        </p>
+                    </div>
+                </div>
                 <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => navigate("/data")}
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleDelete}
                     className="rounded-2xl"
                 >
-                    <ArrowLeft className="h-5 w-5" />
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Stream
                 </Button>
-                <div>
-                    <h2 className="text-2xl font-semibold">{stream.name}</h2>
-                    <p className="text-sm text-muted-foreground">
-                        {stream.pricingModel} · {stream.revenueUnit}
-                    </p>
-                </div>
             </div>
 
-            <Card className="rounded-2xl shadow-sm">
-                <CardContent className="p-6">
-                    <div className="space-y-6">
-                        <div>
-                            <h3 className="text-lg font-semibold mb-2">Overview</h3>
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Market</p>
-                                    <p className="font-medium">
-                                        {data.markets?.find((m) => m.id === stream.marketId)?.name ?? stream.marketId}
-                                    </p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Pricing Model</p>
-                                    <p className="font-medium capitalize">{stream.pricingModel}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Revenue Unit</p>
-                                    <p className="font-medium">{stream.revenueUnit}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Unlock Event</p>
-                                    <p className="font-medium">
-                                        {data.timeline?.find((t) => t.id === stream.unlockEventId)?.name ??
-                                            stream.unlockEventId ??
-                                            "N/A"}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
+            {/* Two-Column Layout */}
+            <div className={`grid gap-4 ${leftPanelCollapsed ? 'grid-cols-[auto_1fr]' : rightPanelCollapsed ? 'grid-cols-[1fr_auto]' : 'grid-cols-[1fr_1fr]'}`}>
 
-                        <div>
-                            <h3 className="text-lg font-semibold mb-2">Unit Economics</h3>
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Delivery Cost Model</p>
-                                    <p className="font-medium capitalize">
-                                        {stream.unitEconomics.deliveryCostModel.type === "grossMargin"
-                                            ? "Gross Margin"
-                                            : "Per Unit Cost"}
-                                    </p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Billing Frequency</p>
-                                    <p className="font-medium capitalize">{stream.unitEconomics.billingFrequency}</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <h3 className="text-lg font-semibold mb-2">Adoption Model</h3>
-                            <div className="grid gap-4 md:grid-cols-3">
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Initial Units</p>
-                                    <p className="font-medium">{stream.adoptionModel.initialUnits}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Max Units (SOM)</p>
-                                    <p className="font-medium">{stream.adoptionModel.maxUnits ?? "Unlimited"}</p>
-                                </div>
-                            </div>
+                {/* Left Column - Editing Tabs */}
+                {leftPanelCollapsed ? (
+                    <div
+                        onClick={() => setLeftPanelCollapsed(false)}
+                        className="w-8 bg-muted/30 hover:bg-muted/50 border-2 rounded-2xl cursor-pointer transition-colors flex flex-col items-center justify-center gap-2 py-8"
+                        title="Expand editing panel"
+                    >
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        <div className="writing-mode-vertical text-xs text-muted-foreground font-medium" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
+                            Edit Details
                         </div>
                     </div>
-                </CardContent>
-            </Card>
+                ) : (
+                    <Card className="rounded-2xl shadow-sm border-2">
+                        <CardHeader className="pb-3">
+                            <div className="flex items-center justify-between">
+                                <CardTitle className="text-base">Edit Details</CardTitle>
+                                {!rightPanelCollapsed && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setLeftPanelCollapsed(true)}
+                                        className="rounded-xl h-7 px-2"
+                                        title="Collapse editing panel"
+                                    >
+                                        <ChevronLeft className="h-4 w-4 mr-1" />
+                                        Collapse
+                                    </Button>
+                                )}
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            <Tabs defaultValue="overview" className="space-y-4">
+                                <TabsList className="rounded-2xl w-full grid grid-cols-3">
+                                    <TabsTrigger value="overview">Overview</TabsTrigger>
+                                    <TabsTrigger value="pricing">Pricing</TabsTrigger>
+                                    <TabsTrigger value="growth">Growth</TabsTrigger>
+                                </TabsList>
+                                <TabsList className="rounded-2xl w-full grid grid-cols-3">
+                                    <TabsTrigger value="costs">Costs</TabsTrigger>
+                                    <TabsTrigger value="assumptions">Assumptions</TabsTrigger>
+                                    <TabsTrigger value="risks">Risks</TabsTrigger>
+                                </TabsList>
 
-            <Card className="rounded-2xl shadow-sm">
-                <CardContent className="p-6">
-                    <Tabs defaultValue="assumptions" className="w-full">
-                        <TabsList className="rounded-2xl">
-                            <TabsTrigger value="assumptions" className="rounded-2xl">
-                                Assumptions
-                            </TabsTrigger>
-                            <TabsTrigger value="risks" className="rounded-2xl">
-                                Risks
-                            </TabsTrigger>
-                        </TabsList>
+                {/* Overview Tab */}
+                <TabsContent value="overview">
+                    <Card className="rounded-2xl shadow-sm">
+                        <CardHeader>
+                            <CardTitle>Basic Information</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div>
+                                    <Label>Stream Name</Label>
+                                    <Input
+                                        value={stream.name}
+                                        onChange={(e) => updateStream({ name: e.target.value })}
+                                        className="rounded-xl"
+                                    />
+                                </div>
+                                <div>
+                                    <Label>Pricing Model</Label>
+                                    <Select
+                                        value={stream.pricingModel}
+                                        onValueChange={(v) => updateStream({ pricingModel: v as PricingModel })}
+                                    >
+                                        <SelectTrigger className="rounded-xl">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="subscription">Subscription</SelectItem>
+                                            <SelectItem value="usage">Usage</SelectItem>
+                                            <SelectItem value="transaction">Transaction</SelectItem>
+                                            <SelectItem value="license">License</SelectItem>
+                                            <SelectItem value="hybrid">Hybrid</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div>
+                                    <Label>Revenue Unit</Label>
+                                    <Input
+                                        value={stream.revenueUnit}
+                                        onChange={(e) => updateStream({ revenueUnit: e.target.value })}
+                                        placeholder="e.g., subscriber, seat, transaction"
+                                        className="rounded-xl"
+                                    />
+                                </div>
+                                <div>
+                                    <Label>Unlock Event</Label>
+                                    <Select
+                                        value={stream.unlockEventId ?? "none"}
+                                        onValueChange={(v) => updateStream({ unlockEventId: v === "none" ? undefined : v })}
+                                    >
+                                        <SelectTrigger className="rounded-xl">
+                                            <SelectValue placeholder="Select event..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">No event (starts immediately)</SelectItem>
+                                            {(data.timeline ?? []).map((event) => (
+                                                <SelectItem key={event.id} value={event.id}>
+                                                    {event.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
 
-                        {/* Assumptions Tab */}
-                        <TabsContent value="assumptions" className="mt-4">
+                {/* Pricing Tab */}
+                <TabsContent value="pricing">
+                    <Card className="rounded-2xl shadow-sm">
+                        <CardHeader>
+                            <CardTitle>Pricing & Unit Economics</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <DistributionInput
+                                label="Price per Unit"
+                                value={stream.unitEconomics.pricePerUnit}
+                                onChange={(dist) =>
+                                    updateStream({
+                                        unitEconomics: {
+                                            ...stream.unitEconomics,
+                                            pricePerUnit: dist,
+                                        },
+                                    })
+                                }
+                                currency={data.meta.currency}
+                            />
+
+                            <div>
+                                <Label>Billing Frequency</Label>
+                                <Select
+                                    value={stream.unitEconomics.billingFrequency}
+                                    onValueChange={(v) =>
+                                        updateStream({
+                                            unitEconomics: {
+                                                ...stream.unitEconomics,
+                                                billingFrequency: v as "monthly" | "annual",
+                                            },
+                                        })
+                                    }
+                                >
+                                    <SelectTrigger className="rounded-xl">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="monthly">Monthly</SelectItem>
+                                        <SelectItem value="annual">Annual (Custom Period)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {stream.unitEconomics.billingFrequency === "annual" && (
+                                <DistributionInput
+                                    label="Billing Cycle (months)"
+                                    value={stream.unitEconomics.contractLengthMonths ?? { type: "triangular", min: 12, mode: 12, max: 12 }}
+                                    onChange={(dist) =>
+                                        updateStream({
+                                            unitEconomics: {
+                                                ...stream.unitEconomics,
+                                                contractLengthMonths: dist,
+                                            },
+                                        })
+                                    }
+                                />
+                            )}
+
+                            <div>
+                                <Label>Delivery Cost Model (COGS)</Label>
+                                <Select
+                                    value={stream.unitEconomics.deliveryCostModel.type}
+                                    onValueChange={(v) => {
+                                        if (v === "grossMargin") {
+                                            updateStream({
+                                                unitEconomics: {
+                                                    ...stream.unitEconomics,
+                                                    deliveryCostModel: {
+                                                        type: "grossMargin",
+                                                        marginPct: { type: "triangular", min: 70, mode: 80, max: 90 },
+                                                    },
+                                                },
+                                            });
+                                        } else {
+                                            updateStream({
+                                                unitEconomics: {
+                                                    ...stream.unitEconomics,
+                                                    deliveryCostModel: {
+                                                        type: "perUnitCost",
+                                                        costPerUnit: { type: "triangular", min: 10, mode: 15, max: 20 },
+                                                    },
+                                                },
+                                            });
+                                        }
+                                    }}
+                                >
+                                    <SelectTrigger className="rounded-xl">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="grossMargin">Gross Margin %</SelectItem>
+                                        <SelectItem value="perUnitCost">Delivery Cost per Unit</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {stream.unitEconomics.deliveryCostModel.type === "grossMargin" ? (
+                                <DistributionInput
+                                    label="Gross Margin %"
+                                    value={stream.unitEconomics.deliveryCostModel.marginPct}
+                                    onChange={(dist) =>
+                                        updateStream({
+                                            unitEconomics: {
+                                                ...stream.unitEconomics,
+                                                deliveryCostModel: {
+                                                    type: "grossMargin",
+                                                    marginPct: dist,
+                                                },
+                                            },
+                                        })
+                                    }
+                                    isPercentage
+                                />
+                            ) : (
+                                <DistributionInput
+                                    label="Delivery Cost per Unit (COGS)"
+                                    value={stream.unitEconomics.deliveryCostModel.costPerUnit}
+                                    onChange={(dist) =>
+                                        updateStream({
+                                            unitEconomics: {
+                                                ...stream.unitEconomics,
+                                                deliveryCostModel: {
+                                                    type: "perUnitCost",
+                                                    costPerUnit: dist,
+                                                },
+                                            },
+                                        })
+                                    }
+                                    currency={data.meta.currency}
+                                />
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* Growth Tab */}
+                <TabsContent value="growth">
+                    <Card className="rounded-2xl shadow-sm">
+                        <CardHeader>
+                            <CardTitle>Growth & Adoption Model</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div>
+                                <Label>Initial Units</Label>
+                                <Input
+                                    type="number"
+                                    value={stream.adoptionModel.initialUnits}
+                                    onChange={(e) =>
+                                        updateStream({
+                                            adoptionModel: {
+                                                ...stream.adoptionModel,
+                                                initialUnits: parseInt(e.target.value) || 0,
+                                            },
+                                        })
+                                    }
+                                    className="rounded-xl"
+                                />
+                            </div>
+
+                            <DistributionInput
+                                label="Acquisition Rate (units per month)"
+                                value={stream.adoptionModel.acquisitionRate}
+                                onChange={(dist) =>
+                                    updateStream({
+                                        adoptionModel: {
+                                            ...stream.adoptionModel,
+                                            acquisitionRate: dist,
+                                        },
+                                    })
+                                }
+                            />
+
+                            {stream.adoptionModel.churnRate && (
+                                <DistributionInput
+                                    label="Churn Rate (% per month)"
+                                    value={stream.adoptionModel.churnRate}
+                                    onChange={(dist) =>
+                                        updateStream({
+                                            adoptionModel: {
+                                                ...stream.adoptionModel,
+                                                churnRate: dist,
+                                            },
+                                        })
+                                    }
+                                    isPercentage
+                                />
+                            )}
+
+                            {stream.adoptionModel.expansionRate && (
+                                <DistributionInput
+                                    label="Expansion Rate (% per month)"
+                                    value={stream.adoptionModel.expansionRate}
+                                    onChange={(dist) =>
+                                        updateStream({
+                                            adoptionModel: {
+                                                ...stream.adoptionModel,
+                                                expansionRate: dist,
+                                            },
+                                        })
+                                    }
+                                    isPercentage
+                                />
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* Costs Tab */}
+                <TabsContent value="costs">
+                    <Card className="rounded-2xl shadow-sm">
+                        <CardHeader>
+                            <CardTitle>Acquisition & Onboarding Costs</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <DistributionInput
+                                label="CAC (Customer Acquisition Cost per Unit)"
+                                value={stream.acquisitionCosts.cacPerUnit}
+                                onChange={(dist) =>
+                                    updateStream({
+                                        acquisitionCosts: {
+                                            ...stream.acquisitionCosts,
+                                            cacPerUnit: dist,
+                                        },
+                                    })
+                                }
+                                currency={data.meta.currency}
+                            />
+
+                            {stream.acquisitionCosts.onboardingCostPerUnit && (
+                                <DistributionInput
+                                    label="Onboarding Cost per Unit"
+                                    value={stream.acquisitionCosts.onboardingCostPerUnit}
+                                    onChange={(dist) =>
+                                        updateStream({
+                                            acquisitionCosts: {
+                                                ...stream.acquisitionCosts,
+                                                onboardingCostPerUnit: dist,
+                                            },
+                                        })
+                                    }
+                                    currency={data.meta.currency}
+                                />
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* Assumptions Tab */}
+                <TabsContent value="assumptions">
+                    <Card className="rounded-2xl shadow-sm">
+                        <CardHeader>
+                            <CardTitle>Assumptions</CardTitle>
+                        </CardHeader>
+                        <CardContent>
                             <DataTable<Assumption>
                                 title=""
                                 rows={stream.assumptions ?? []}
@@ -203,10 +679,17 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
                                     },
                                 ]}
                             />
-                        </TabsContent>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
 
-                        {/* Risks Tab */}
-                        <TabsContent value="risks" className="mt-4">
+                {/* Risks Tab */}
+                <TabsContent value="risks">
+                    <Card className="rounded-2xl shadow-sm">
+                        <CardHeader>
+                            <CardTitle>Risks</CardTitle>
+                        </CardHeader>
+                        <CardContent>
                             <DataTable<Risk>
                                 title=""
                                 rows={stream.risks ?? []}
@@ -320,10 +803,206 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
                                     },
                                 ]}
                             />
-                        </TabsContent>
-                    </Tabs>
-                </CardContent>
-            </Card>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+                            </Tabs>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Right Column - Preview */}
+                {rightPanelCollapsed ? (
+                    <div
+                        onClick={() => setRightPanelCollapsed(false)}
+                        className="w-8 bg-muted/30 hover:bg-muted/50 border-2 rounded-2xl cursor-pointer transition-colors flex flex-col items-center justify-center gap-2 py-8"
+                        title="Expand preview panel"
+                    >
+                        <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+                        <div className="writing-mode-vertical text-xs text-muted-foreground font-medium" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
+                            Preview
+                        </div>
+                    </div>
+                ) : (
+                    <Card className="rounded-2xl shadow-sm border-2">
+                        <CardHeader>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <TrendingUp className="h-5 w-5" />
+                                    <CardTitle className="text-base">Revenue Projection</CardTitle>
+                                </div>
+                                {!leftPanelCollapsed && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setRightPanelCollapsed(true)}
+                                        className="rounded-xl h-7 px-2"
+                                        title="Collapse preview panel"
+                                    >
+                                        Collapse
+                                        <ChevronRight className="h-4 w-4 ml-1" />
+                                    </Button>
+                                )}
+                            </div>
+                            <div className="flex gap-1 mt-3">
+                                <Button
+                                    variant={previewDistribution === "min" ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => setPreviewDistribution("min")}
+                                    className="rounded-xl flex-1 text-xs h-7"
+                                >
+                                    Bear (Min)
+                                </Button>
+                                <Button
+                                    variant={previewDistribution === "mode" ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => setPreviewDistribution("mode")}
+                                    className="rounded-xl flex-1 text-xs h-7"
+                                >
+                                    Expected (Mode)
+                                </Button>
+                                <Button
+                                    variant={previewDistribution === "max" ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => setPreviewDistribution("max")}
+                                    className="rounded-xl flex-1 text-xs h-7"
+                                >
+                                    Bull (Max)
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="h-[400px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={previewData}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis
+                                            dataKey="month"
+                                            label={{ value: "Month", position: "insideBottom", offset: -5 }}
+                                        />
+                                        <YAxis
+                                            yAxisId="left"
+                                            label={{ value: "Revenue / Costs", angle: -90, position: "insideLeft" }}
+                                            tickFormatter={(v) => fmtCurrency(v, data.meta.currency)}
+                                        />
+                                        <YAxis
+                                            yAxisId="right"
+                                            orientation="right"
+                                            label={{ value: "Users", angle: 90, position: "insideRight" }}
+                                        />
+                                        <Tooltip
+                                            formatter={(value: number, name: string) => {
+                                                if (name === "revenue") {
+                                                    return [fmtCurrency(value, data.meta.currency), "Revenue"];
+                                                }
+                                                if (name === "costs") {
+                                                    return [fmtCurrency(value, data.meta.currency), "Costs"];
+                                                }
+                                                if (name === "profit") {
+                                                    return [fmtCurrency(value, data.meta.currency), "Profit"];
+                                                }
+                                                return [Math.round(value), "Users"];
+                                            }}
+                                        />
+                                        <Legend />
+                                        <Line
+                                            yAxisId="left"
+                                            type="monotone"
+                                            dataKey="revenue"
+                                            stroke="#8884d8"
+                                            strokeWidth={2}
+                                            dot={false}
+                                            name="Revenue"
+                                        />
+                                        <Line
+                                            yAxisId="left"
+                                            type="monotone"
+                                            dataKey="costs"
+                                            stroke="#ff7c7c"
+                                            strokeWidth={2}
+                                            dot={false}
+                                            name="Costs"
+                                        />
+                                        <Line
+                                            yAxisId="right"
+                                            type="monotone"
+                                            dataKey="users"
+                                            stroke="#82ca9d"
+                                            strokeWidth={2}
+                                            dot={false}
+                                            name="Users"
+                                        />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+
+                            <div className="mt-6 grid gap-4 md:grid-cols-3">
+                                <div className="rounded-lg border p-4">
+                                    <p className="text-sm text-muted-foreground">Month 12 Revenue</p>
+                                    <p className="text-2xl font-semibold">
+                                        {fmtCurrency(previewData[11]?.revenue || 0, data.meta.currency)}
+                                    </p>
+                                </div>
+                                <div className="rounded-lg border p-4">
+                                    <p className="text-sm text-muted-foreground">Month 12 Users</p>
+                                    <p className="text-2xl font-semibold">{Math.round(previewData[11]?.users || 0)}</p>
+                                </div>
+                                <div className="rounded-lg border p-4">
+                                    <p className="text-sm text-muted-foreground">Total 5Y Revenue</p>
+                                    <p className="text-2xl font-semibold">
+                                        {fmtCurrency(
+                                            previewData.slice(0, 60).reduce((sum, m) => sum + m.revenue, 0),
+                                            data.meta.currency
+                                        )}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Tabular View */}
+                            <div className="mt-6">
+                                <h3 className="text-sm font-semibold mb-3">Monthly Breakdown</h3>
+                                <div className="rounded-lg border max-h-[400px] overflow-auto">
+                                    <table className="w-full text-xs">
+                                        <thead className="sticky top-0 bg-background border-b">
+                                            <tr>
+                                                <th className="text-left p-2 font-medium">Month</th>
+                                                <th className="text-right p-2 font-medium">Users</th>
+                                                <th className="text-right p-2 font-medium">Revenue</th>
+                                                <th className="text-right p-2 font-medium">Delivery Costs</th>
+                                                <th className="text-right p-2 font-medium">Acq. Costs</th>
+                                                <th className="text-right p-2 font-medium">Gross Margin</th>
+                                                <th className="text-right p-2 font-medium">Net Profit</th>
+                                                <th className="text-right p-2 font-medium">Cumulative</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {previewData.map((row, idx) => {
+                                                const cumulativeProfit = previewData
+                                                    .slice(0, idx + 1)
+                                                    .reduce((sum, r) => sum + (r.profit || 0), 0);
+                                                const grossMargin = row.revenue - (row.deliveryCosts || 0);
+
+                                                return (
+                                                    <tr key={idx} className="border-b hover:bg-muted/30">
+                                                        <td className="p-2">{idx + 1}</td>
+                                                        <td className="p-2 text-right">{Math.round(row.users)}</td>
+                                                        <td className="p-2 text-right">{fmtCurrency(row.revenue, data.meta.currency)}</td>
+                                                        <td className="p-2 text-right">{fmtCurrency(row.deliveryCosts || 0, data.meta.currency)}</td>
+                                                        <td className="p-2 text-right">{fmtCurrency(row.acquisitionCosts || 0, data.meta.currency)}</td>
+                                                        <td className="p-2 text-right font-medium">{fmtCurrency(grossMargin, data.meta.currency)}</td>
+                                                        <td className="p-2 text-right font-medium">{fmtCurrency(row.profit || 0, data.meta.currency)}</td>
+                                                        <td className="p-2 text-right font-semibold">{fmtCurrency(cumulativeProfit, data.meta.currency)}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+            </div>
         </div>
     );
 }
