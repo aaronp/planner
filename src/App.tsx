@@ -26,10 +26,7 @@ import { RiskScaleComponent } from "./components/RiskScaleComponent";
 import { generatePDF } from "./utils/pdfExport";
 
 // Route Pages
-import { TimelinePage } from "./pages/TimelinePage";
-import { TablePage } from "./pages/TablePage";
 import { SummaryPage } from "./pages/SummaryPage";
-import { GraphPage } from "./pages/GraphPage";
 import { CostsPage } from "./pages/CostsPage";
 import { PhasesPage } from "./pages/PhasesPage";
 import { RevenueStreamsPage } from "./pages/RevenueStreamsPage";
@@ -274,10 +271,7 @@ function AppContent() {
                         <NavLink to="/costs">Costs</NavLink>
                         <NavLink to="/revenue-streams">Revenue Streams</NavLink>
                         <NavLink to="/phases">Phases</NavLink>
-                        <NavLink to="/timeline">Timeline</NavLink>
-                        <NavLink to="/table">Table</NavLink>
                         <NavLink to="/roi">ROI</NavLink>
-                        <NavLink to="/graph">Graph</NavLink>
                         <NavLink to="/summary">Summary</NavLink>
                         <NavLink to="/data">Data</NavLink>
                     </nav>
@@ -286,18 +280,9 @@ function AppContent() {
                     <Routes>
                         <Route path="/" element={<Navigate to="/costs" replace />} />
                         <Route
-                            path="/timeline"
-                            element={<TimelinePage data={data} month={month} />}
-                        />
-                        <Route
-                            path="/table"
-                            element={<TablePage data={data} month={month} />}
-                        />
-                        <Route
                             path="/roi"
                             element={<ROIPage data={data} month={month} />}
                         />
-                        <Route path="/graph" element={<GraphPage data={data} month={month} />} />
                         <Route path="/summary" element={<SummaryPage data={data} month={month} />} />
                         <Route
                             path="/costs"

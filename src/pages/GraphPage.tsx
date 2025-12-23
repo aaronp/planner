@@ -34,7 +34,6 @@ export function GraphPage({ data }: GraphPageProps) {
     const horizonMonths = data.meta.horizonMonths;
 
     // UI state
-    const [isLogarithmic, setIsLogarithmic] = useState(false);
     const [showBalance, setShowBalance] = useState(true);
     const [showFilters, setShowFilters] = useState(false);
 
@@ -239,16 +238,6 @@ export function GraphPage({ data }: GraphPageProps) {
                         <div className="flex items-center gap-6">
                             <div className="flex items-center gap-2">
                                 <Switch
-                                    id="logarithmic"
-                                    checked={isLogarithmic}
-                                    onCheckedChange={setIsLogarithmic}
-                                />
-                                <Label htmlFor="logarithmic" className="text-sm cursor-pointer">
-                                    Logarithmic
-                                </Label>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Switch
                                     id="show-balance"
                                     checked={showBalance}
                                     onCheckedChange={setShowBalance}
@@ -382,8 +371,8 @@ export function GraphPage({ data }: GraphPageProps) {
                                 interval={Math.max(1, Math.floor(horizonMonths / 12))}
                             />
                             <YAxis
-                                scale={isLogarithmic ? "log" : "auto"}
-                                domain={isLogarithmic ? [1, 'auto'] : ['auto', 'auto']}
+                                scale="auto"
+                                domain={['auto', 'auto']}
                                 allowDataOverflow={false}
                                 tick={{ fontSize: 11 }}
                                 tickFormatter={(value) => {
