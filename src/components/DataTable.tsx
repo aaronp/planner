@@ -18,16 +18,18 @@ export function DataTable<T extends { id: string }>(props: {
 
     return (
         <Card className="rounded-2xl shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between gap-3">
-                <div>
-                    <CardTitle className="text-base">{title}</CardTitle>
-                    <div className="text-sm text-muted-foreground">Edit values directly. Changes save automatically.</div>
-                </div>
-                <Button onClick={() => setRows([...rows, addRow()])} variant="secondary" className="rounded-2xl">
-                    <Plus className="h-4 w-4 mr-2" /> Add
-                </Button>
-            </CardHeader>
-            <CardContent>
+            {title && (
+                <CardHeader className="flex flex-row items-center justify-between gap-3">
+                    <div>
+                        <CardTitle className="text-base">{title}</CardTitle>
+                        <div className="text-sm text-muted-foreground">Edit values directly. Changes save automatically.</div>
+                    </div>
+                    <Button onClick={() => setRows([...rows, addRow()])} variant="secondary" className="rounded-2xl">
+                        <Plus className="h-4 w-4 mr-2" /> Add
+                    </Button>
+                </CardHeader>
+            )}
+            <CardContent className="relative">
                 <div className="overflow-x-auto overflow-y-visible rounded-xl border">
                     <table className="w-full text-sm">
                         <thead className="sticky top-0 bg-background">
@@ -68,7 +70,7 @@ export function DataTable<T extends { id: string }>(props: {
                                     {/* Drag handle and insert button column - appears on hover */}
                                     <td className="p-0 align-top relative">
                                         {hoveredRowIndex === idx && (
-                                            <div className="absolute right-full top-0 flex items-center gap-0.5 bg-background p-1 shadow-sm rounded-l-lg border border-r-0 z-10">
+                                            <div className="absolute right-full top-0 flex items-center gap-0.5 bg-background p-1 shadow-sm rounded-l-lg border border-r-0 z-10 mr-1">
                                                 <div
                                                     className="rounded-lg h-6 w-6 p-0 cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-muted transition-colors"
                                                     title="Drag to reorder"

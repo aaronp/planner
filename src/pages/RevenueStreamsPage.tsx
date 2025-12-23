@@ -3,7 +3,7 @@ import type { VentureData, RevenueStream, TimelineEvent, Phase } from "../types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, ChevronRight, GripVertical, ChevronLeft } from "lucide-react";
+import { Plus, ChevronRight, GripVertical, ChevronLeft, BarChart3, Table as TableIcon } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { uid, fmtCurrency } from "../utils/formatUtils";
@@ -285,6 +285,7 @@ export function RevenueStreamsPage({ data, setRevenueStreams, setTimeline }: Rev
     const [selectedStreamId, setSelectedStreamId] = useState<string | null>(streams[0]?.id ?? null);
     const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
     const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+    const [revenuePreviewMode, setRevenuePreviewMode] = useState<"graph" | "table">("graph");
 
     // Load stream colors from localStorage
     const [streamColors, setStreamColors] = useState<Map<string, string>>(() => {
@@ -561,19 +562,43 @@ export function RevenueStreamsPage({ data, setRevenueStreams, setTimeline }: Rev
                                         Total revenue, costs, and net profit projections
                                     </p>
                                 </div>
-                                {!leftPanelCollapsed && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setRightPanelCollapsed(true)}
-                                        className="rounded-2xl"
-                                    >
-                                        <ChevronRight className="h-4 w-4" />
-                                    </Button>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    <div className="flex items-center rounded-xl border">
+                                        <Button
+                                            variant={revenuePreviewMode === "graph" ? "default" : "ghost"}
+                                            size="sm"
+                                            onClick={() => setRevenuePreviewMode("graph")}
+                                            className="rounded-l-xl rounded-r-none h-7 px-2"
+                                            title="Graph view"
+                                        >
+                                            <BarChart3 className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            variant={revenuePreviewMode === "table" ? "default" : "ghost"}
+                                            size="sm"
+                                            onClick={() => setRevenuePreviewMode("table")}
+                                            className="rounded-r-xl rounded-l-none h-7 px-2"
+                                            title="Table view"
+                                        >
+                                            <TableIcon className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                    {!leftPanelCollapsed && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setRightPanelCollapsed(true)}
+                                            className="rounded-2xl"
+                                        >
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-6">
+                            {revenuePreviewMode === "graph" && (
+                                <>
                             {/* Chart */}
                             <div className="h-64">
                                 <ResponsiveContainer width="100%" height="100%">
@@ -634,7 +659,11 @@ export function RevenueStreamsPage({ data, setRevenueStreams, setTimeline }: Rev
                                     </CardContent>
                                 </Card>
                             </div>
+                                </>
+                            )}
 
+                            {revenuePreviewMode === "table" && (
+                                <>
                             {/* Monthly Breakdown Table */}
                             <div>
                                 <h3 className="text-sm font-medium mb-2">Monthly Breakdown</h3>
@@ -792,6 +821,8 @@ export function RevenueStreamsPage({ data, setRevenueStreams, setTimeline }: Rev
                                     </Table>
                                 </div>
                             </div>
+                                </>
+                            )}
                         </CardContent>
                     </Card>
                 )}

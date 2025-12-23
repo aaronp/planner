@@ -9,7 +9,7 @@ import { computeTaskDates } from "../utils/modelEngine";
 import { monthIndexFromStart, addMonths } from "../utils/dateUtils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { GripVertical, ChevronLeft, ChevronRight, Palette, BarChart3, Table as TableIcon } from "lucide-react";
+import { GripVertical, ChevronLeft, ChevronRight, Palette, BarChart3, Table as TableIcon, Plus } from "lucide-react";
 import { Line, LineChart, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip as RechartsTooltip, Legend } from "recharts";
 import { fmtCurrency } from "../utils/formatUtils";
 
@@ -431,7 +431,7 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
         }
 
         return result;
-    }, [data.tasks, data.costModel?.fixedMonthlyCosts, data.meta.horizonMonths, data.meta.start, computedTasks]);
+    }, [data.tasks, data.costModel, data.meta.horizonMonths, data.meta.start, computedTasks]);
 
     // Handler for changing task start when dragging
     const handleChangeTaskStart = useCallback(
@@ -535,42 +535,69 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                 : "1fr 1fr",
                         }}
                     >
-                        {/* Left Panel - Task Table */}
+                        {/* Left Panel - Costs */}
                         {leftPanelCollapsed ? (
                             <div
                                 onClick={() => setLeftPanelCollapsed(false)}
                                 className="w-8 bg-muted/30 hover:bg-muted/50 border-2 rounded-2xl cursor-pointer transition-colors flex flex-col items-center justify-center gap-2 py-8"
-                                title="Expand task table"
+                                title="Expand costs table"
                             >
                                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
                                 <div
                                     className="text-xs text-muted-foreground font-medium"
                                     style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
                                 >
-                                    Task Table
+                                    Costs
                                 </div>
                             </div>
                         ) : (
                             <Card className="rounded-2xl shadow-sm border-2">
                                 <CardHeader className="pb-3">
                                     <div className="flex items-center justify-between">
-                                        <CardTitle className="text-base">Task Table</CardTitle>
-                                        {!rightPanelCollapsed && (
+                                        <CardTitle className="text-base">Costs</CardTitle>
+                                        <div className="flex items-center gap-2">
                                             <Button
-                                                variant="ghost"
+                                                onClick={() => {
+                                                    const newId = getNextTaskId();
+                                                    const palette = ["#ef4444", "#f97316", "#f59e0b", "#10b981", "#3b82f6", "#6366f1", "#8b5cf6"];
+                                                    setTaskColors(new Map(taskColors).set(newId, palette[data.tasks.length % palette.length]));
+                                                    setTasks([
+                                                        ...data.tasks,
+                                                        {
+                                                            id: newId,
+                                                            name: "New Task",
+                                                            start: data.meta.start,
+                                                            duration: "1m",
+                                                            costOneOff: 0,
+                                                            costMonthly: 0,
+                                                            dependsOn: [],
+                                                        },
+                                                    ]);
+                                                }}
+                                                variant="secondary"
                                                 size="sm"
-                                                onClick={() => setLeftPanelCollapsed(true)}
-                                                className="rounded-xl"
+                                                className="rounded-2xl"
                                             >
-                                                <ChevronLeft className="h-4 w-4 mr-1" />
-                                                Collapse
+                                                <Plus className="h-4 w-4 mr-2" />
+                                                Add Cost
                                             </Button>
-                                        )}
+                                            {!rightPanelCollapsed && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => setLeftPanelCollapsed(true)}
+                                                    className="rounded-xl"
+                                                >
+                                                    <ChevronLeft className="h-4 w-4 mr-1" />
+                                                    Collapse
+                                                </Button>
+                                            )}
+                                        </div>
                                     </div>
                                 </CardHeader>
                                 <CardContent className="p-6 pt-0">
                         <DataTable<Task>
-                            title="Tasks (Gantt)"
+                            title=""
                             rows={data.tasks}
                             setRows={setTasks}
                             addRow={() => {
@@ -676,6 +703,19 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                     header: "Count (headcount)",
                                     width: "140px",
                                     render: (v, row) => {
+                                        const hasSchedule = row.countSchedule && row.countSchedule.length > 0;
+
+                                        if (hasSchedule) {
+                                            return (
+                                                <button
+                                                    onClick={() => navigate(`/cost/${row.id}`)}
+                                                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                                >
+                                                    schedule
+                                                </button>
+                                            );
+                                        }
+
                                         return (
                                             <Input
                                                 type="number"
