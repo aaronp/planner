@@ -1,21 +1,22 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import type { VentureData, Task, FixedCost, ComputedTask } from "../types";
+import type { VentureData, Task, FixedCost, ComputedTask, Phase } from "../types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { DataTable } from "../components/DataTable";
-import { uid } from "../utils/formatUtils";
-import { isValidDuration, isValidDependency, calculateTaskStartDate, parseDependency, addDuration } from "../utils/taskUtils";
+import { isValidDuration, isValidDependency, calculateTaskStartDate, parseDependency } from "../utils/taskUtils";
 import { computeTaskDates } from "../utils/modelEngine";
 import { monthIndexFromStart, addMonths } from "../utils/dateUtils";
 import { Badge } from "@/components/ui/badge";
-import { GripVertical } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { GripVertical, ChevronLeft, ChevronRight } from "lucide-react";
+import { Line, LineChart, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip as RechartsTooltip, Legend } from "recharts";
+import { fmtCurrency } from "../utils/formatUtils";
 
 type CostsPageProps = {
     data: VentureData;
     setTasks: (tasks: Task[]) => void;
     setFixedCosts: (costs: FixedCost[]) => void;
+    setPhases: (phases: Phase[]) => void;
 };
 
 type TaskWithColor = Task & { color?: string };
@@ -53,6 +54,7 @@ function DraggableTaskTimeline({
     horizonMonths,
     ventureStart,
     selectedId,
+    phases,
     onSelect,
     onChangeTaskStart,
 }: {
@@ -61,6 +63,7 @@ function DraggableTaskTimeline({
     horizonMonths: number;
     ventureStart: string;
     selectedId?: string;
+    phases?: Phase[];
     onSelect: (id: string) => void;
     onChangeTaskStart: (id: string, month: number) => void;
 }) {
@@ -134,12 +137,17 @@ function DraggableTaskTimeline({
 
     const timelineHeight = Math.max(112, tasks.length * 44 + 24);
 
-    const phaseColors: Record<string, string> = {
-        Inception: "#8b5cf6",
-        Build: "#3b82f6",
-        Deploy: "#10b981",
-        GoToMarket: "#f59e0b",
-        Other: "#6b7280",
+    // Helper to convert duration to months
+    const durationToMonths = (duration: string): number => {
+        const match = duration.match(/^(\d+)([dwmy])$/);
+        if (!match) return 0;
+        const value = parseInt(match[1]!, 10);
+        const unit = match[2]!;
+        if (unit === "d") return value / 30;
+        if (unit === "w") return value / 4;
+        if (unit === "m") return value;
+        if (unit === "y") return value * 12;
+        return 0;
     };
 
     return (
@@ -161,6 +169,40 @@ function DraggableTaskTimeline({
                     className="relative w-full rounded-2xl border bg-background overflow-visible"
                     style={{ height: `${timelineHeight}px` }}
                 >
+                    {/* Phase backgrounds */}
+                    {phases?.map((phase, idx) => {
+                        // Calculate start month based on previous phases
+                        let startMonth = 0;
+                        for (let i = 0; i < idx; i++) {
+                            const prevPhase = phases[i]!;
+                            startMonth += durationToMonths(prevPhase.duration);
+                        }
+
+                        const durationMonths = durationToMonths(phase.duration);
+                        const leftPct = (startMonth / horizonMonths) * 100;
+                        const widthPct = (durationMonths / horizonMonths) * 100;
+                        return (
+                            <div
+                                key={phase.id}
+                                className="absolute inset-y-0 pointer-events-none"
+                                style={{
+                                    left: `${leftPct}%`,
+                                    width: `${widthPct}%`,
+                                    background: `${phase.color}10`,
+                                    borderLeft: `2px solid ${phase.color}40`,
+                                    borderRight: `2px solid ${phase.color}40`,
+                                }}
+                            >
+                                <div
+                                    className="absolute top-1 left-2 text-xs font-medium opacity-60"
+                                    style={{ color: phase.color }}
+                                >
+                                    {phase.name}
+                                </div>
+                            </div>
+                        );
+                    })}
+
                     <div className="absolute inset-0 pointer-events-none opacity-60">
                         {Array.from({ length: horizonMonths + 1 }).map((_, i) => (
                             <div
@@ -171,14 +213,14 @@ function DraggableTaskTimeline({
                         ))}
                     </div>
 
-                    <div className="absolute inset-0 p-3">
+                    <div className="absolute inset-0 p-3 pt-6">
                         {tasks.map((t, idx) => {
                             const isSel = t.id === selectedId;
                             const month = getTaskMonth(t);
                             const durationMonths = getTaskDurationMonths(t);
                             const leftPct = (month / horizonMonths) * 100;
                             const widthPct = Math.min((durationMonths / horizonMonths) * 100, 100 - leftPct);
-                            const color = phaseColors[t.phase] || phaseColors.Other;
+                            const color = "#3b82f6"; // Default blue color for all tasks
                             const isDragging = draggingId === t.id;
                             const hasDeps = t.dependsOn && t.dependsOn.length > 0;
 
@@ -190,7 +232,7 @@ function DraggableTaskTimeline({
                                         (isSel ? "ring-2 ring-offset-2" : "")
                                     }
                                     style={{
-                                        top: `${idx * 44 + 8}px`,
+                                        top: `${idx * 44 + 12}px`,
                                         left: `${leftPct}%`,
                                         width: `${widthPct}%`,
                                         background: `${color}15`,
@@ -247,6 +289,8 @@ function DraggableTaskTimeline({
 
 export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(data.tasks[0]?.id ?? null);
+    const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+    const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
 
     // Compute task dates for displaying in Fixed Costs
     const computedTasks = useMemo(() => computeTaskDates(data.tasks, data.meta.start), [data.tasks, data.meta.start]);
@@ -255,6 +299,72 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
         () => data.tasks.map((t) => ({ ...t })),
         [data.tasks]
     );
+
+    // Calculate preview data for cost visualization
+    const previewData = useMemo(() => {
+        const result = [];
+        const fixedCosts = data.costModel?.fixedMonthlyCosts ?? [];
+
+        for (let i = 0; i < data.meta.horizonMonths; i++) {
+            // Calculate task costs for this month
+            let taskOneOffCosts = 0;
+            let taskMonthlyCosts = 0;
+
+            for (const task of data.tasks) {
+                const computed = computedTasks.find((t) => t.id === task.id);
+                if (!computed?.computedStart) continue;
+
+                const taskStartMonth = monthIndexFromStart(data.meta.start, computed.computedStart);
+                const taskEndMonth = computed.computedEnd
+                    ? monthIndexFromStart(data.meta.start, computed.computedEnd)
+                    : data.meta.horizonMonths;
+
+                // One-off costs at start month
+                if (i === taskStartMonth && task.costOneOff) {
+                    taskOneOffCosts += task.costOneOff;
+                }
+
+                // Monthly costs during task duration
+                if (i >= taskStartMonth && i <= taskEndMonth && task.costMonthly) {
+                    taskMonthlyCosts += task.costMonthly;
+                }
+            }
+
+            // Calculate fixed costs for this month
+            let fixedMonthlyCosts = 0;
+            for (const fc of fixedCosts) {
+                if (!fc.startEventId) {
+                    // No start event - cost from beginning
+                    const costValue = typeof fc.monthlyCost === 'number'
+                        ? fc.monthlyCost
+                        : fc.monthlyCost.mode ?? fc.monthlyCost.min ?? 0;
+                    fixedMonthlyCosts += costValue;
+                } else {
+                    // Has start event - check if started
+                    const startTask = computedTasks.find((t) => t.id === fc.startEventId);
+                    if (startTask?.computedStart) {
+                        const startMonth = monthIndexFromStart(data.meta.start, startTask.computedStart);
+                        if (i >= startMonth) {
+                            const costValue = typeof fc.monthlyCost === 'number'
+                                ? fc.monthlyCost
+                                : fc.monthlyCost.mode ?? fc.monthlyCost.min ?? 0;
+                            fixedMonthlyCosts += costValue;
+                        }
+                    }
+                }
+            }
+
+            result.push({
+                month: i,
+                taskOneOff: taskOneOffCosts,
+                taskMonthly: taskMonthlyCosts,
+                fixedCosts: fixedMonthlyCosts,
+                totalCosts: taskOneOffCosts + taskMonthlyCosts + fixedMonthlyCosts,
+            });
+        }
+
+        return result;
+    }, [data.tasks, data.costModel?.fixedMonthlyCosts, data.meta.horizonMonths, data.meta.start, computedTasks]);
 
     // Handler for changing task start when dragging
     const handleChangeTaskStart = useCallback(
@@ -330,32 +440,8 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
         return `T${maxNum + 1}`;
     };
 
-    // Calculate next Fixed Cost ID based on max existing ID
-    const getNextFixedCostId = () => {
-        const fixedCosts = data.costModel?.fixedMonthlyCosts ?? [];
-        const fcNumbers = fixedCosts
-            .map((fc) => {
-                const match = fc.id.match(/^FC(\d+)$/);
-                return match ? parseInt(match[1], 10) : 0;
-            })
-            .filter((n) => !isNaN(n));
-        const maxNum = fcNumbers.length > 0 ? Math.max(...fcNumbers) : 0;
-        return `FC${maxNum + 1}`;
-    };
-
     return (
-        <Tabs defaultValue="tasks" className="w-full">
-            <TabsList className="rounded-2xl">
-                <TabsTrigger value="tasks" className="rounded-2xl">
-                    Tasks
-                </TabsTrigger>
-                <TabsTrigger value="fixed-costs" className="rounded-2xl">
-                    Fixed Costs
-                </TabsTrigger>
-            </TabsList>
-
-            {/* Tasks Tab */}
-            <TabsContent value="tasks" className="mt-4">
+        <div className="w-full">
                 <div className="space-y-4">
                     {/* Draggable Timeline */}
                     {data.tasks.length > 0 && (
@@ -365,13 +451,57 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                             horizonMonths={data.meta.horizonMonths}
                             ventureStart={data.meta.start}
                             selectedId={selectedTaskId ?? undefined}
+                            phases={data.phases}
                             onSelect={setSelectedTaskId}
                             onChangeTaskStart={handleChangeTaskStart}
                         />
                     )}
 
-                <Card className="rounded-2xl shadow-sm">
-                    <CardContent className="p-6">
+                    {/* Two-column layout */}
+                    <div
+                        className="grid gap-4"
+                        style={{
+                            gridTemplateColumns: leftPanelCollapsed
+                                ? "32px 1fr"
+                                : rightPanelCollapsed
+                                ? "1fr 32px"
+                                : "1fr 1fr",
+                        }}
+                    >
+                        {/* Left Panel - Task Table */}
+                        {leftPanelCollapsed ? (
+                            <div
+                                onClick={() => setLeftPanelCollapsed(false)}
+                                className="w-8 bg-muted/30 hover:bg-muted/50 border-2 rounded-2xl cursor-pointer transition-colors flex flex-col items-center justify-center gap-2 py-8"
+                                title="Expand task table"
+                            >
+                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                <div
+                                    className="text-xs text-muted-foreground font-medium"
+                                    style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
+                                >
+                                    Task Table
+                                </div>
+                            </div>
+                        ) : (
+                            <Card className="rounded-2xl shadow-sm border-2">
+                                <CardHeader className="pb-3">
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle className="text-base">Task Table</CardTitle>
+                                        {!rightPanelCollapsed && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setLeftPanelCollapsed(true)}
+                                                className="rounded-xl"
+                                            >
+                                                <ChevronLeft className="h-4 w-4 mr-1" />
+                                                Collapse
+                                            </Button>
+                                        )}
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-6 pt-0">
                         <DataTable<Task>
                             title="Tasks (Gantt)"
                             rows={data.tasks}
@@ -379,7 +509,6 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                             addRow={() => ({
                                 id: getNextTaskId(),
                                 name: "New Task",
-                                phase: "Other",
                                 start: data.meta.start,
                                 duration: "1m",
                                 costOneOff: 0,
@@ -394,30 +523,6 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                     render: (v) => <span className="text-sm font-mono">{v}</span>,
                                 },
                                 { key: "name", header: "Name", width: "260px", input: "text" },
-                                {
-                                    key: "phase",
-                                    header: "Phase",
-                                    width: "160px",
-                                    render: (v, row) => (
-                                        <Select
-                                            value={String(v)}
-                                            onValueChange={(nv) => {
-                                                setTasks(data.tasks.map((t) => (t.id === row.id ? { ...t, phase: nv as any } : t)));
-                                            }}
-                                        >
-                                            <SelectTrigger className="h-8 rounded-xl">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {["Inception", "Build", "Deploy", "GoToMarket", "Other"].map((p) => (
-                                                    <SelectItem key={p} value={p}>
-                                                        {p}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    ),
-                                },
                                 {
                                     key: "start",
                                     header: "Start",
@@ -509,114 +614,175 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                 },
                             ]}
                         />
-                    </CardContent>
-                </Card>
-                </div>
-            </TabsContent>
+                                </CardContent>
+                            </Card>
+                        )}
 
-            {/* Fixed Costs Tab */}
-            <TabsContent value="fixed-costs" className="mt-4">
-                <Card className="rounded-2xl shadow-sm">
-                    <CardContent className="p-6">
-                        <DataTable<FixedCost>
-                            title="Fixed Monthly Costs"
-                            rows={data.costModel?.fixedMonthlyCosts ?? []}
-                            setRows={setFixedCosts}
-                            addRow={() => ({
-                                id: getNextFixedCostId(),
-                                name: "New Fixed Cost",
-                                monthlyCost: { type: "triangular", min: 0, mode: 0, max: 0 },
-                                startEventId: undefined,
-                            })}
-                            columns={[
-                                {
-                                    key: "id",
-                                    header: "ID",
-                                    width: "110px",
-                                    render: (v) => <span className="text-sm font-mono">{v}</span>,
-                                },
-                                { key: "name", header: "Name", width: "280px", input: "text" },
-                                {
-                                    key: "monthlyCost",
-                                    header: "Monthly Cost",
-                                    width: "180px",
-                                    render: (v, row) => {
-                                        const currentValue = typeof v === "number" ? v : v?.mode ?? v?.min ?? 0;
-                                        return (
-                                            <Input
-                                                type="number"
-                                                className="h-8 rounded-xl"
-                                                value={currentValue}
-                                                onChange={(e) => {
-                                                    const newValue = Number(e.target.value || 0);
-                                                    const fixedCosts = data.costModel?.fixedMonthlyCosts ?? [];
-                                                    setFixedCosts(
-                                                        fixedCosts.map((fc) =>
-                                                            fc.id === row.id
-                                                                ? {
-                                                                      ...fc,
-                                                                      monthlyCost: {
-                                                                          type: "triangular",
-                                                                          min: newValue,
-                                                                          mode: newValue,
-                                                                          max: newValue,
-                                                                      },
-                                                                  }
-                                                                : fc
-                                                        )
-                                                    );
-                                                }}
-                                            />
-                                        );
-                                    },
-                                },
-                                {
-                                    key: "startEventId",
-                                    header: "Starts on",
-                                    width: "240px",
-                                    render: (v, row) => {
-                                        const selectedTask = computedTasks.find((t) => t.id === v);
-                                        return (
-                                            <div className="space-y-1">
-                                                <Select
-                                                    value={v || "none"}
-                                                    onValueChange={(nv) => {
-                                                        const fixedCosts = data.costModel?.fixedMonthlyCosts ?? [];
-                                                        setFixedCosts(
-                                                            fixedCosts.map((fc) =>
-                                                                fc.id === row.id
-                                                                    ? { ...fc, startEventId: nv === "none" ? undefined : nv }
-                                                                    : fc
-                                                            )
-                                                        );
+                        {/* Right Panel - Cost Preview */}
+                        {rightPanelCollapsed ? (
+                            <div
+                                onClick={() => setRightPanelCollapsed(false)}
+                                className="w-8 bg-muted/30 hover:bg-muted/50 border-2 rounded-2xl cursor-pointer transition-colors flex flex-col items-center justify-center gap-2 py-8"
+                                title="Expand preview panel"
+                            >
+                                <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+                                <div
+                                    className="text-xs text-muted-foreground font-medium"
+                                    style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
+                                >
+                                    Cost Preview
+                                </div>
+                            </div>
+                        ) : (
+                            <Card className="rounded-2xl shadow-sm border-2">
+                                <CardHeader className="pb-3">
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle className="text-base">Cost Preview</CardTitle>
+                                        {!leftPanelCollapsed && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setRightPanelCollapsed(true)}
+                                                className="rounded-xl"
+                                            >
+                                                <ChevronRight className="h-4 w-4 ml-1" />
+                                                Collapse
+                                            </Button>
+                                        )}
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    {/* Cost Chart */}
+                                    <div className="h-[300px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart data={previewData}>
+                                                <CartesianGrid strokeDasharray="3 3" />
+                                                <XAxis
+                                                    dataKey="month"
+                                                    label={{ value: "Month", position: "insideBottom", offset: -5 }}
+                                                />
+                                                <YAxis
+                                                    label={{ value: "Costs", angle: -90, position: "insideLeft" }}
+                                                    tickFormatter={(v) => fmtCurrency(v, data.meta.currency)}
+                                                />
+                                                <RechartsTooltip
+                                                    formatter={(value: number | undefined, name: string | undefined) => {
+                                                        const labels: Record<string, string> = {
+                                                            taskOneOff: "Task One-off",
+                                                            taskMonthly: "Task Monthly",
+                                                            fixedCosts: "Fixed Costs",
+                                                            totalCosts: "Total Costs",
+                                                        };
+                                                        return [fmtCurrency(value || 0, data.meta.currency), labels[name || ""] || name || ""];
                                                     }}
-                                                >
-                                                    <SelectTrigger className="h-8 rounded-xl">
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="none">From start</SelectItem>
-                                                        {computedTasks.map((t) => (
-                                                            <SelectItem key={t.id} value={t.id}>
-                                                                {t.name}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                                {selectedTask && (
-                                                    <div className="text-xs text-muted-foreground">
-                                                        From: {selectedTask.computedStart}
-                                                    </div>
+                                                />
+                                                <Legend />
+                                                <Line
+                                                    type="monotone"
+                                                    dataKey="taskOneOff"
+                                                    stroke="#f59e0b"
+                                                    strokeWidth={2}
+                                                    dot={false}
+                                                    name="Task One-off"
+                                                />
+                                                <Line
+                                                    type="monotone"
+                                                    dataKey="taskMonthly"
+                                                    stroke="#3b82f6"
+                                                    strokeWidth={2}
+                                                    dot={false}
+                                                    name="Task Monthly"
+                                                />
+                                                <Line
+                                                    type="monotone"
+                                                    dataKey="fixedCosts"
+                                                    stroke="#10b981"
+                                                    strokeWidth={2}
+                                                    dot={false}
+                                                    name="Fixed Costs"
+                                                />
+                                                <Line
+                                                    type="monotone"
+                                                    dataKey="totalCosts"
+                                                    stroke="#dc2626"
+                                                    strokeWidth={3}
+                                                    dot={false}
+                                                    name="Total Costs"
+                                                />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+
+                                    {/* Summary Cards */}
+                                    <div className="mt-6 grid gap-4 md:grid-cols-2">
+                                        <div className="rounded-lg border p-4">
+                                            <p className="text-sm text-muted-foreground">Month 12 Costs</p>
+                                            <p className="text-2xl font-semibold">
+                                                {fmtCurrency(previewData[11]?.totalCosts || 0, data.meta.currency)}
+                                            </p>
+                                        </div>
+                                        <div className="rounded-lg border p-4">
+                                            <p className="text-sm text-muted-foreground">Total 5Y Costs</p>
+                                            <p className="text-2xl font-semibold">
+                                                {fmtCurrency(
+                                                    previewData.slice(0, 60).reduce((sum, m) => sum + m.totalCosts, 0),
+                                                    data.meta.currency
                                                 )}
-                                            </div>
-                                        );
-                                    },
-                                },
-                            ]}
-                        />
-                    </CardContent>
-                </Card>
-            </TabsContent>
-        </Tabs>
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Tabular View */}
+                                    <div className="mt-6">
+                                        <h3 className="text-sm font-semibold mb-3">Monthly Breakdown</h3>
+                                        <div className="rounded-lg border max-h-[400px] overflow-auto">
+                                            <table className="w-full text-xs">
+                                                <thead className="sticky top-0 bg-background border-b">
+                                                    <tr>
+                                                        <th className="text-left p-2 font-medium">Month</th>
+                                                        <th className="text-right p-2 font-medium">Task One-off</th>
+                                                        <th className="text-right p-2 font-medium">Task Monthly</th>
+                                                        <th className="text-right p-2 font-medium">Fixed Costs</th>
+                                                        <th className="text-right p-2 font-medium">Total</th>
+                                                        <th className="text-right p-2 font-medium">Cumulative</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {previewData.map((row, idx) => {
+                                                        const cumulativeCosts = previewData
+                                                            .slice(0, idx + 1)
+                                                            .reduce((sum, r) => sum + r.totalCosts, 0);
+
+                                                        return (
+                                                            <tr key={idx} className="border-b hover:bg-muted/30">
+                                                                <td className="p-2">{idx + 1}</td>
+                                                                <td className="p-2 text-right">
+                                                                    {fmtCurrency(row.taskOneOff, data.meta.currency)}
+                                                                </td>
+                                                                <td className="p-2 text-right">
+                                                                    {fmtCurrency(row.taskMonthly, data.meta.currency)}
+                                                                </td>
+                                                                <td className="p-2 text-right">
+                                                                    {fmtCurrency(row.fixedCosts, data.meta.currency)}
+                                                                </td>
+                                                                <td className="p-2 text-right font-medium">
+                                                                    {fmtCurrency(row.totalCosts, data.meta.currency)}
+                                                                </td>
+                                                                <td className="p-2 text-right font-semibold">
+                                                                    {fmtCurrency(cumulativeCosts, data.meta.currency)}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+                    </div>
+                </div>
+        </div>
     );
 }

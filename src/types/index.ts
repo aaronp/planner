@@ -26,6 +26,13 @@ export type TimelineEvent = {
     description?: string;
 };
 
+export type Phase = {
+    id: string;
+    name: string;
+    duration: string; // e.g., "6m", "12m"
+    color: string; // Hex color for background
+};
+
 // ============================================================================
 // Market (Units-First)
 // ============================================================================
@@ -144,7 +151,6 @@ export type Risk = {
 export type Task = {
     id: string;
     name: string;
-    phase: "Inception" | "Build" | "Deploy" | "GoToMarket" | "Other";
     start?: ISODate; // Manual start (only if no dependencies), otherwise calculated
     duration?: string; // e.g., "2w", "3m", "1y" - empty means ongoing task
     costOneOff: number;
@@ -185,6 +191,7 @@ export type VentureData = {
         initialReserve: number;
     };
     tasks: Task[];
+    phases?: Phase[];
     timeline?: TimelineEvent[];
     markets?: Market[];
     revenueStreams?: RevenueStream[];

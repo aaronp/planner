@@ -16,7 +16,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 
-import type { VentureData, Task, RevenueStream, TimelineEvent, FixedCost } from "./types";
+import type { VentureData, Task, RevenueStream, TimelineEvent, FixedCost, Phase } from "./types";
 import { loadData, saveData, DEFAULT } from "./utils/storage";
 import { fmtCurrency } from "./utils/formatUtils";
 import { computeSeries } from "./utils/modelEngine";
@@ -31,6 +31,7 @@ import { TablePage } from "./pages/TablePage";
 import { SummaryPage } from "./pages/SummaryPage";
 import { GraphPage } from "./pages/GraphPage";
 import { CostsPage } from "./pages/CostsPage";
+import { PhasesPage } from "./pages/PhasesPage";
 import { RevenueStreamsPage } from "./pages/RevenueStreamsPage";
 import { RevenueStreamDetailPage } from "./pages/RevenueStreamDetailPage";
 import { DataPage } from "./pages/DataPage";
@@ -90,6 +91,7 @@ function AppContent() {
     const snap = series[Math.min(series.length - 1, Math.max(0, month))] ?? series[0];
 
     const setTasks = (tasks: Task[]) => setData((prev) => ({ ...prev, tasks }));
+    const setPhases = (phases: Phase[]) => setData((prev) => ({ ...prev, phases }));
 
     // New data setters for spec-compliant model
     const setRevenueStreams = (revenueStreams: RevenueStream[]) => setData((prev) => ({ ...prev, revenueStreams }));
@@ -271,6 +273,7 @@ function AppContent() {
                     <nav className="flex gap-2 px-4">
                         <NavLink to="/costs">Costs</NavLink>
                         <NavLink to="/revenue-streams">Revenue Streams</NavLink>
+                        <NavLink to="/phases">Phases</NavLink>
                         <NavLink to="/timeline">Timeline</NavLink>
                         <NavLink to="/table">Table</NavLink>
                         <NavLink to="/roi">ROI</NavLink>
@@ -303,6 +306,16 @@ function AppContent() {
                                     data={data}
                                     setTasks={setTasks}
                                     setFixedCosts={setFixedCosts}
+                                    setPhases={setPhases}
+                                />
+                            }
+                        />
+                        <Route
+                            path="/phases"
+                            element={
+                                <PhasesPage
+                                    data={data}
+                                    setPhases={setPhases}
                                 />
                             }
                         />

@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import type { VentureData, RevenueStream, TimelineEvent } from "../types";
+import type { VentureData, RevenueStream, TimelineEvent, Phase } from "../types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, ChevronRight, GripVertical } from "lucide-react";
+import { Plus, ChevronRight, GripVertical, ChevronLeft } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { uid } from "../utils/formatUtils";
+import { uid, fmtCurrency } from "../utils/formatUtils";
+import { calculateStreamMonthlyMetrics } from "../utils/logic";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 type RevenueStreamsPageProps = {
     data: VentureData;
@@ -48,6 +50,7 @@ function DraggableTimeline({
     horizonMonths,
     selectedId,
     timeline,
+    phases,
     onSelect,
     onChangeStartMonth,
 }: {
@@ -55,6 +58,7 @@ function DraggableTimeline({
     horizonMonths: number;
     selectedId?: string;
     timeline: TimelineEvent[];
+    phases?: Phase[];
     onSelect: (id: string) => void;
     onChangeStartMonth: (id: string, month: number) => void;
 }) {
@@ -113,6 +117,19 @@ function DraggableTimeline({
 
     const timelineHeight = Math.max(112, streams.length * 44 + 24);
 
+    // Helper to convert duration to months
+    const durationToMonths = (duration: string): number => {
+        const match = duration.match(/^(\d+)([dwmy])$/);
+        if (!match) return 0;
+        const value = parseInt(match[1]!, 10);
+        const unit = match[2]!;
+        if (unit === "d") return value / 30;
+        if (unit === "w") return value / 4;
+        if (unit === "m") return value;
+        if (unit === "y") return value * 12;
+        return 0;
+    };
+
     return (
         <Card className="rounded-2xl shadow-sm">
             <CardHeader className="pb-3">
@@ -132,6 +149,40 @@ function DraggableTimeline({
                     className="relative w-full rounded-2xl border bg-background overflow-visible"
                     style={{ height: `${timelineHeight}px` }}
                 >
+                    {/* Phase backgrounds */}
+                    {phases?.map((phase, idx) => {
+                        // Calculate start month based on previous phases
+                        let startMonth = 0;
+                        for (let i = 0; i < idx; i++) {
+                            const prevPhase = phases[i]!;
+                            startMonth += durationToMonths(prevPhase.duration);
+                        }
+
+                        const durationMonths = durationToMonths(phase.duration);
+                        const leftPct = (startMonth / horizonMonths) * 100;
+                        const widthPct = (durationMonths / horizonMonths) * 100;
+                        return (
+                            <div
+                                key={phase.id}
+                                className="absolute inset-y-0 pointer-events-none"
+                                style={{
+                                    left: `${leftPct}%`,
+                                    width: `${widthPct}%`,
+                                    background: `${phase.color}10`,
+                                    borderLeft: `2px solid ${phase.color}40`,
+                                    borderRight: `2px solid ${phase.color}40`,
+                                }}
+                            >
+                                <div
+                                    className="absolute top-1 left-2 text-xs font-medium opacity-60"
+                                    style={{ color: phase.color }}
+                                >
+                                    {phase.name}
+                                </div>
+                            </div>
+                        );
+                    })}
+
                     <div className="absolute inset-0 pointer-events-none opacity-60">
                         {Array.from({ length: horizonMonths + 1 }).map((_, i) => (
                             <div
@@ -142,7 +193,7 @@ function DraggableTimeline({
                         ))}
                     </div>
 
-                    <div className="absolute inset-0 p-3">
+                    <div className="absolute inset-0 p-3 pt-6">
                         {streams.map((s, idx) => {
                             const isSel = s.id === selectedId;
                             const month = getStreamMonth(s);
@@ -174,7 +225,7 @@ function DraggableTimeline({
                                         (isSel ? "ring-2 ring-offset-2" : "")
                                     }
                                     style={{
-                                        top: `${idx * 44 + 8}px`,
+                                        top: `${idx * 44 + 12}px`,
                                         left: `${leftPct}%`,
                                         width: `${widthPct}%`,
                                         background: `${color}15`,
@@ -228,6 +279,8 @@ export function RevenueStreamsPage({ data, setRevenueStreams, setTimeline }: Rev
     const navigate = useNavigate();
     const streams = data.revenueStreams ?? [];
     const [selectedStreamId, setSelectedStreamId] = useState<string | null>(streams[0]?.id ?? null);
+    const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+    const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
 
     // Load stream colors from localStorage
     const [streamColors, setStreamColors] = useState<Map<string, string>>(() => {
@@ -247,6 +300,41 @@ export function RevenueStreamsPage({ data, setRevenueStreams, setTimeline }: Rev
         () => streams.map((s) => ({ ...s, color: streamColors.get(s.id) || "#4f46e5" })),
         [streams, streamColors]
     );
+
+    // Calculate preview data for all streams
+    const previewData = useMemo(() => {
+        const result = [];
+
+        for (let i = 0; i < data.meta.horizonMonths; i++) {
+            let totalRevenue = 0;
+            let totalCosts = 0;
+            let totalNetProfit = 0;
+
+            // Aggregate metrics from all streams
+            for (const stream of streams) {
+                const metrics = calculateStreamMonthlyMetrics(
+                    stream,
+                    i,
+                    data.timeline,
+                    "mode", // Default to mode for preview
+                    1 // No multiplier for preview
+                );
+
+                totalRevenue += metrics.grossRevenue;
+                totalCosts += metrics.totalCosts;
+                totalNetProfit += metrics.netProfit;
+            }
+
+            result.push({
+                month: i,
+                revenue: totalRevenue,
+                costs: totalCosts,
+                netProfit: totalNetProfit,
+            });
+        }
+
+        return result;
+    }, [streams, data.timeline, data.meta.horizonMonths]);
 
     const handleAddNew = () => {
         // Create a new revenue stream with a unique ID
@@ -334,80 +422,260 @@ export function RevenueStreamsPage({ data, setRevenueStreams, setTimeline }: Rev
                     horizonMonths={data.meta.horizonMonths}
                     selectedId={selectedStreamId ?? undefined}
                     timeline={data.timeline ?? []}
+                    phases={data.phases}
                     onSelect={setSelectedStreamId}
                     onChangeStartMonth={handleChangeStartMonth}
                 />
             )}
 
-            <Card className="rounded-2xl shadow-sm">
-                <CardHeader>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <CardTitle className="text-lg">Revenue Streams</CardTitle>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                Manage your venture's revenue sources and pricing models
-                            </p>
-                        </div>
-                        <Button onClick={handleAddNew} className="rounded-2xl">
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Revenue Stream
-                        </Button>
-                    </div>
-                </CardHeader>
-            <CardContent>
-                {streams.length === 0 ? (
-                    <div className="text-center py-12">
-                        <p className="text-muted-foreground mb-4">No revenue streams yet</p>
-                        <Button onClick={handleAddNew} variant="outline" className="rounded-2xl">
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Your First Revenue Stream
+            {/* Two-column layout with collapsible panels */}
+            <div
+                className="grid gap-4 items-start"
+                style={{
+                    gridTemplateColumns: leftPanelCollapsed
+                        ? "32px 1fr"
+                        : rightPanelCollapsed
+                          ? "1fr 32px"
+                          : "1fr 1fr",
+                }}
+            >
+                {/* Left Panel: Revenue Streams Table */}
+                {leftPanelCollapsed ? (
+                    <div className="h-full flex items-center justify-center bg-muted/30 rounded-2xl border border-border">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setLeftPanelCollapsed(false)}
+                            className="h-full w-full flex items-center justify-center"
+                        >
+                            <ChevronRight className="h-4 w-4" />
                         </Button>
                     </div>
                 ) : (
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Pricing Model</TableHead>
-                                <TableHead>Unit Type</TableHead>
-                                <TableHead>Starts</TableHead>
-                                <TableHead className="w-[50px]"></TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {streams.map((stream) => (
-                                <TableRow key={stream.id} className="cursor-pointer hover:bg-muted/50">
-                                    <TableCell>
-                                        <Link
-                                            to={`/revenue-stream/${stream.id}`}
-                                            className="font-medium hover:underline"
+                    <Card className="rounded-2xl shadow-sm">
+                        <CardHeader>
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <CardTitle className="text-lg">Revenue Streams</CardTitle>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        Manage your venture's revenue sources and pricing models
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button onClick={handleAddNew} className="rounded-2xl">
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Add Revenue Stream
+                                    </Button>
+                                    {!rightPanelCollapsed && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setLeftPanelCollapsed(true)}
+                                            className="rounded-2xl"
                                         >
-                                            {stream.name}
-                                        </Link>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge variant="outline" className={getPricingModelColor(stream.pricingModel)}>
-                                            {stream.pricingModel}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-muted-foreground">
-                                        {stream.revenueUnit}
-                                    </TableCell>
-                                    <TableCell className="text-muted-foreground text-sm">
-                                        {getUnlockEvent(stream.unlockEventId)}
-                                    </TableCell>
-                                    <TableCell>
-                                        <Link to={`/revenue-stream/${stream.id}`}>
-                                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                                        </Link>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                                            <ChevronLeft className="h-4 w-4" />
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            {streams.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <p className="text-muted-foreground mb-4">No revenue streams yet</p>
+                                    <Button onClick={handleAddNew} variant="outline" className="rounded-2xl">
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Add Your First Revenue Stream
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Name</TableHead>
+                                            <TableHead>Pricing Model</TableHead>
+                                            <TableHead>Unit Type</TableHead>
+                                            <TableHead>Starts</TableHead>
+                                            <TableHead className="w-[50px]"></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {streams.map((stream) => (
+                                            <TableRow key={stream.id} className="cursor-pointer hover:bg-muted/50">
+                                                <TableCell>
+                                                    <Link
+                                                        to={`/revenue-stream/${stream.id}`}
+                                                        className="font-medium hover:underline"
+                                                    >
+                                                        {stream.name}
+                                                    </Link>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge variant="outline" className={getPricingModelColor(stream.pricingModel)}>
+                                                        {stream.pricingModel}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className="text-muted-foreground">
+                                                    {stream.revenueUnit}
+                                                </TableCell>
+                                                <TableCell className="text-muted-foreground text-sm">
+                                                    {getUnlockEvent(stream.unlockEventId)}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Link to={`/revenue-stream/${stream.id}`}>
+                                                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                                    </Link>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            )}
+                        </CardContent>
+                    </Card>
                 )}
-            </CardContent>
-        </Card>
+
+                {/* Right Panel: Revenue Preview */}
+                {rightPanelCollapsed ? (
+                    <div className="h-full flex items-center justify-center bg-muted/30 rounded-2xl border border-border">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setRightPanelCollapsed(false)}
+                            className="h-full w-full flex items-center justify-center"
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                    </div>
+                ) : (
+                    <Card className="rounded-2xl shadow-sm">
+                        <CardHeader>
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <CardTitle className="text-lg">Revenue Preview</CardTitle>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        Total revenue, costs, and net profit projections
+                                    </p>
+                                </div>
+                                {!leftPanelCollapsed && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setRightPanelCollapsed(true)}
+                                        className="rounded-2xl"
+                                    >
+                                        <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                )}
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            {/* Chart */}
+                            <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={previewData}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis
+                                            dataKey="month"
+                                            label={{ value: "Month", position: "insideBottom", offset: -5 }}
+                                        />
+                                        <YAxis
+                                            label={{ value: "Amount", angle: -90, position: "insideLeft" }}
+                                            tickFormatter={(value) => fmtCurrency(value, data.meta.currency)}
+                                        />
+                                        <Tooltip
+                                            formatter={(value: number | undefined, name: string | undefined) => {
+                                                const labels: Record<string, string> = {
+                                                    revenue: "Revenue",
+                                                    costs: "Costs",
+                                                    netProfit: "Net Profit",
+                                                };
+                                                return [
+                                                    fmtCurrency(value || 0, data.meta.currency),
+                                                    labels[name || ""] || name || "",
+                                                ];
+                                            }}
+                                        />
+                                        <Legend />
+                                        <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} />
+                                        <Line type="monotone" dataKey="costs" stroke="#ef4444" strokeWidth={2} />
+                                        <Line type="monotone" dataKey="netProfit" stroke="#3b82f6" strokeWidth={2} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+
+                            {/* Summary Cards */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm text-muted-foreground">Month 12 Revenue</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-2xl font-bold">
+                                            {fmtCurrency(previewData[11]?.revenue || 0, data.meta.currency)}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm text-muted-foreground">Total 5Y Revenue</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-2xl font-bold">
+                                            {fmtCurrency(
+                                                previewData.slice(0, 60).reduce((sum, d) => sum + d.revenue, 0),
+                                                data.meta.currency
+                                            )}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </div>
+
+                            {/* Monthly Breakdown Table */}
+                            <div>
+                                <h3 className="text-sm font-medium mb-2">Monthly Breakdown</h3>
+                                <div className="max-h-96 overflow-y-auto border rounded-lg">
+                                    <Table>
+                                        <TableHeader className="sticky top-0 bg-background">
+                                            <TableRow>
+                                                <TableHead>Month</TableHead>
+                                                <TableHead className="text-right">Revenue</TableHead>
+                                                <TableHead className="text-right">Costs</TableHead>
+                                                <TableHead className="text-right">Net Profit</TableHead>
+                                                <TableHead className="text-right">Cumulative</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {previewData.map((row, idx) => {
+                                                const cumulative = previewData
+                                                    .slice(0, idx + 1)
+                                                    .reduce((sum, d) => sum + d.netProfit, 0);
+                                                return (
+                                                    <TableRow key={row.month}>
+                                                        <TableCell>M{row.month}</TableCell>
+                                                        <TableCell className="text-right">
+                                                            {fmtCurrency(row.revenue, data.meta.currency)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            {fmtCurrency(row.costs, data.meta.currency)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            {fmtCurrency(row.netProfit, data.meta.currency)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-medium">
+                                                            {fmtCurrency(cumulative, data.meta.currency)}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+            </div>
         </div>
     );
 }

@@ -354,6 +354,8 @@ export function GraphPage({ data }: GraphPageProps) {
                             />
                             <YAxis
                                 scale={isLogarithmic ? "log" : "auto"}
+                                domain={isLogarithmic ? [1, 'auto'] : ['auto', 'auto']}
+                                allowDataOverflow={false}
                                 tick={{ fontSize: 11 }}
                                 tickFormatter={(value) => {
                                     const symbol = currency === "USD" ? "$" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : currency;
