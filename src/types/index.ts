@@ -149,8 +149,10 @@ export type Risk = {
 // ============================================================================
 
 export type CountSchedulePoint = {
-    month: number; // Month number from plan start
+    month: number; // Month number from plan start (resolved value)
     count: number; // New count at this month
+    mode?: "month" | "relative" | string; // "month", "relative", or phase ID
+    expression?: string; // For relative mode: e.g., "s+1m", "e-2m", "s+25%"
 };
 
 export type Task = {

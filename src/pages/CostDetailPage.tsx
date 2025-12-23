@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import type { VentureData, Task, CountSchedulePoint, Phase } from "../types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,51 +39,143 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
         );
     }
 
-    const updateTask = (updates: Partial<Task>) => {
-        setTasks(data.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)));
-    };
+    const updateTask = useCallback(
+        (updates: Partial<Task>) => {
+            setTasks(data.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+        },
+        [id, data.tasks, setTasks]
+    );
 
     const phases = data.phases ?? [];
     const countSchedule = task.countSchedule ?? [];
 
-    // Helper to convert phase to month
-    const getPhaseStartMonth = (phaseId: string): number => {
-        let currentMonth = 0;
-        for (const phase of phases) {
-            if (phase.id === phaseId) return currentMonth;
-            const match = phase.duration.match(/^(\d+)([dwmy])$/);
-            if (match) {
-                const value = parseInt(match[1]!, 10);
-                const unit = match[2]!;
-                if (unit === "d") currentMonth += value / 30;
-                else if (unit === "w") currentMonth += value / 4;
-                else if (unit === "m") currentMonth += value;
-                else if (unit === "y") currentMonth += value * 12;
-            }
-        }
-        return currentMonth;
-    };
-
-    // Helper to get count at a specific month
-    const getCountAtMonth = (month: number): number => {
-        const baseCount = task.count ?? 1;
-        if (countSchedule.length === 0) return baseCount;
-        const sortedSchedule = [...countSchedule].sort((a, b) => a.month - b.month);
-        let currentCount = baseCount;
-        for (const point of sortedSchedule) {
-            if (point.month <= month) {
-                currentCount = point.count;
-            } else {
-                break;
-            }
-        }
-        return currentCount;
-    };
-
-    // Calculate cost over time for visualization
+    // Calculate computed tasks
     const computedTasks = useMemo(() => computeTaskDates(data.tasks, data.meta.start), [data.tasks, data.meta.start]);
     const computed = computedTasks.find((t) => t.id === task.id);
 
+    // Helper to convert phase to month
+    const getPhaseStartMonth = useCallback(
+        (phaseId: string): number => {
+            let currentMonth = 0;
+            for (const phase of phases) {
+                if (phase.id === phaseId) return currentMonth;
+                const match = phase.duration.match(/^(\d+)([dwmy])$/);
+                if (match) {
+                    const value = parseInt(match[1]!, 10);
+                    const unit = match[2]!;
+                    if (unit === "d") currentMonth += value / 30;
+                    else if (unit === "w") currentMonth += value / 4;
+                    else if (unit === "m") currentMonth += value;
+                    else if (unit === "y") currentMonth += value * 12;
+                }
+            }
+            return currentMonth;
+        },
+        [phases]
+    );
+
+    // Parse relative time binding (e.g., "s+1m", "e-2m", "s+25%")
+    const parseRelativeBinding = useCallback(
+        (binding: string): number | null => {
+            if (!binding.trim()) return null;
+
+            const trimmed = binding.trim().toLowerCase();
+
+            // Parse anchor (s = start, e = end)
+            let anchor: "start" | "end" = "start";
+            let rest = trimmed;
+
+            if (trimmed.startsWith("e")) {
+                anchor = "end";
+                rest = trimmed.substring(1);
+            } else if (trimmed.startsWith("s")) {
+                rest = trimmed.substring(1);
+            } else {
+                return null; // Invalid format
+            }
+
+            // Get task start and end months
+            const startMonth = computed?.computedStart ? monthIndexFromStart(data.meta.start, computed.computedStart) : 0;
+            const endMonth = computed?.computedEnd
+                ? monthIndexFromStart(data.meta.start, computed.computedEnd)
+                : data.meta.horizonMonths;
+
+            const baseMonth = anchor === "start" ? startMonth : endMonth;
+
+            // No offset
+            if (!rest || rest === "") {
+                return baseMonth;
+            }
+
+            // Parse offset
+            const offsetMatch = rest.match(/^([+\-])(\d+(?:\.\d+)?)(%|[dwmy])$/);
+            if (!offsetMatch) return null;
+
+            const sign = offsetMatch[1] === "+" ? 1 : -1;
+            const value = parseFloat(offsetMatch[2]!);
+            const unit = offsetMatch[3]!;
+
+            let offsetMonths = 0;
+
+            if (unit === "%") {
+                // Percentage of task duration
+                const duration = endMonth - startMonth;
+                offsetMonths = (value / 100) * duration;
+            } else {
+                // Absolute offset
+                if (unit === "d") offsetMonths = value / 30;
+                else if (unit === "w") offsetMonths = value / 4;
+                else if (unit === "m") offsetMonths = value;
+                else if (unit === "y") offsetMonths = value * 12;
+            }
+
+            return Math.round(baseMonth + sign * offsetMonths);
+        },
+        [computed?.computedStart, computed?.computedEnd, data.meta.start, data.meta.horizonMonths]
+    );
+
+    // Helper to resolve the month for a schedule point based on its mode
+    const resolveSchedulePointMonth = useCallback(
+        (point: CountSchedulePoint): number => {
+            if (!point.mode || point.mode === "month") {
+                return point.month;
+            } else if (point.mode === "relative" && point.expression) {
+                const parsed = parseRelativeBinding(point.expression);
+                return parsed ?? point.month;
+            } else {
+                // Phase mode
+                return getPhaseStartMonth(point.mode);
+            }
+        },
+        [parseRelativeBinding, getPhaseStartMonth]
+    );
+
+    // Helper to get count at a specific month (using resolved months)
+    const getCountAtMonth = useCallback(
+        (month: number): number => {
+            const baseCount = task.count ?? 1;
+            if (countSchedule.length === 0) return baseCount;
+
+            // Resolve all schedule points and sort by resolved month
+            const resolvedSchedule = countSchedule.map((point) => ({
+                resolvedMonth: resolveSchedulePointMonth(point),
+                count: point.count,
+            })).sort((a, b) => a.resolvedMonth - b.resolvedMonth);
+
+            let currentCount = baseCount;
+            for (const point of resolvedSchedule) {
+                if (point.resolvedMonth <= month) {
+                    currentCount = point.count;
+                } else {
+                    break;
+                }
+            }
+            return currentCount;
+        },
+        [task.count, countSchedule, resolveSchedulePointMonth]
+    );
+
+    // Calculate cost over time for visualization
     const costData = useMemo(() => {
         if (!computed?.computedStart) return [];
 
@@ -116,12 +208,13 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
         }
 
         return result;
-    }, [task, computed, data.meta, countSchedule]);
+    }, [task, computed, data.meta, getCountAtMonth]);
 
     const handleAddSchedulePoint = () => {
         const newPoint: CountSchedulePoint = {
             month: 0,
             count: task.count ?? 1,
+            mode: "month",
         };
         updateTask({ countSchedule: [...countSchedule, newPoint] });
     };
@@ -136,13 +229,52 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
         updateTask({ countSchedule: countSchedule.filter((_, i) => i !== index) });
     };
 
-    const handleSetPhaseBinding = (index: number, phaseId: string) => {
-        const month = getPhaseStartMonth(phaseId);
-        handleUpdateSchedulePoint(index, { month });
-    };
+    // Track previous computed values to avoid unnecessary updates
+    const prevComputedRef = useRef<{ start?: string; end?: string; duration?: string }>({});
+
+    // Re-evaluate relative expressions when task changes
+    useEffect(() => {
+        const currentComputed = {
+            start: computed?.computedStart,
+            end: computed?.computedEnd,
+            duration: task.duration,
+        };
+
+        // Only update if the computed values actually changed
+        if (
+            prevComputedRef.current.start === currentComputed.start &&
+            prevComputedRef.current.end === currentComputed.end &&
+            prevComputedRef.current.duration === currentComputed.duration
+        ) {
+            return;
+        }
+
+        prevComputedRef.current = currentComputed;
+
+        // Update months for points with relative expressions
+        const updatedSchedule = countSchedule.map((point) => {
+            if (point.mode === "relative" && point.expression) {
+                const month = parseRelativeBinding(point.expression);
+                if (month !== null && month !== point.month) {
+                    return { ...point, month };
+                }
+            }
+            return point;
+        });
+
+        // Update if any changed
+        const hasChanges = updatedSchedule.some((point, idx) => point.month !== countSchedule[idx]?.month);
+        if (hasChanges) {
+            updateTask({ countSchedule: updatedSchedule });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [computed?.computedStart, computed?.computedEnd, task.duration]);
 
     // Sort schedule by month for display
     const sortedSchedule = [...countSchedule].sort((a, b) => a.month - b.month);
+
+    // State for validation errors
+    const [schedulePointErrors, setSchedulePointErrors] = useState<Record<number, string | null>>({});
 
     // Timeline drag handling
     const [isDragging, setIsDragging] = useState(false);
@@ -437,66 +569,143 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
                                     (p) => p.month === point.month && p.count === point.count
                                 );
 
-                                // Find which phase this month falls in
-                                const matchingPhase = phases.find((phase) => {
-                                    const phaseStart = getPhaseStartMonth(phase.id);
-                                    return Math.abs(phaseStart - point.month) < 0.5;
-                                });
+                                // Get mode and expression from data model
+                                const mode = point.mode ?? "month";
+                                const relativeInput = point.expression ?? "";
+                                const relativeError = schedulePointErrors[originalIndex] ?? null;
+
+                                // Compute the resolved month based on mode
+                                const getResolvedMonth = (): number => {
+                                    if (mode === "month") {
+                                        return point.month;
+                                    } else if (mode === "relative" && relativeInput) {
+                                        const parsed = parseRelativeBinding(relativeInput);
+                                        return parsed ?? point.month;
+                                    } else if (mode !== "month" && mode !== "relative") {
+                                        // Phase mode
+                                        return getPhaseStartMonth(mode);
+                                    }
+                                    return point.month;
+                                };
+
+                                const resolvedMonth = getResolvedMonth();
+
+                                const handleModeChange = (newMode: string) => {
+                                    setSchedulePointErrors({ ...schedulePointErrors, [originalIndex]: null });
+
+                                    if (newMode === "month") {
+                                        // Switch to month mode
+                                        handleUpdateSchedulePoint(originalIndex, { mode: "month", expression: undefined });
+                                    } else if (newMode === "relative") {
+                                        // Switch to relative mode
+                                        handleUpdateSchedulePoint(originalIndex, { mode: "relative", expression: "" });
+                                    } else {
+                                        // Phase selected
+                                        const month = getPhaseStartMonth(newMode);
+                                        handleUpdateSchedulePoint(originalIndex, { mode: newMode, expression: undefined, month });
+                                    }
+                                };
+
+                                const handleRelativeChange = (value: string) => {
+                                    if (!value.trim()) {
+                                        setSchedulePointErrors({ ...schedulePointErrors, [originalIndex]: null });
+                                        handleUpdateSchedulePoint(originalIndex, { expression: value });
+                                        return;
+                                    }
+
+                                    const month = parseRelativeBinding(value);
+                                    if (month === null) {
+                                        setSchedulePointErrors({
+                                            ...schedulePointErrors,
+                                            [originalIndex]: "Invalid format. Use: s, e, s+1m, e-2m, s+25%",
+                                        });
+                                        handleUpdateSchedulePoint(originalIndex, { expression: value });
+                                    } else {
+                                        setSchedulePointErrors({ ...schedulePointErrors, [originalIndex]: null });
+                                        handleUpdateSchedulePoint(originalIndex, { expression: value, month });
+                                    }
+                                };
 
                                 return (
                                     <Card key={idx} className="rounded-xl border-2">
                                         <CardContent className="p-4">
                                             <div className="flex items-end gap-4">
                                                 <div className="flex-1">
-                                                    <Label>Month</Label>
-                                                    <Input
-                                                        type="number"
-                                                        min={0}
-                                                        max={data.meta.horizonMonths}
-                                                        value={point.month}
-                                                        onChange={(e) =>
-                                                            handleUpdateSchedulePoint(originalIndex, {
-                                                                month: Math.max(
-                                                                    0,
-                                                                    Math.min(
-                                                                        data.meta.horizonMonths,
-                                                                        parseFloat(e.target.value) || 0
-                                                                    )
-                                                                ),
-                                                            })
-                                                        }
-                                                        className="rounded-xl"
-                                                    />
+                                                    <Label>Start on</Label>
+                                                    <Select value={mode} onValueChange={handleModeChange}>
+                                                        <SelectTrigger className="rounded-xl">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="month">Month</SelectItem>
+                                                            <SelectItem value="relative">Relative</SelectItem>
+                                                            {phases.map((phase) => (
+                                                                <SelectItem key={phase.id} value={phase.id}>
+                                                                    {phase.name}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
 
-                                                {phases.length > 0 && (
+                                                {mode === "month" && (
                                                     <div className="flex-1">
-                                                        <Label>Or bind to Phase</Label>
-                                                        <Select
-                                                            value={matchingPhase?.id ?? "custom"}
-                                                            onValueChange={(phaseId) => {
-                                                                if (phaseId !== "custom") {
-                                                                    handleSetPhaseBinding(originalIndex, phaseId);
-                                                                }
-                                                            }}
-                                                        >
-                                                            <SelectTrigger className="rounded-xl">
-                                                                <SelectValue placeholder="Custom month" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="custom">Custom month</SelectItem>
-                                                                {phases.map((phase) => (
-                                                                    <SelectItem key={phase.id} value={phase.id}>
-                                                                        {phase.name} (M{Math.round(getPhaseStartMonth(phase.id))})
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
+                                                        <Label>Month number</Label>
+                                                        <Input
+                                                            type="number"
+                                                            min={0}
+                                                            max={data.meta.horizonMonths}
+                                                            value={point.month}
+                                                            onChange={(e) =>
+                                                                handleUpdateSchedulePoint(originalIndex, {
+                                                                    month: Math.max(
+                                                                        0,
+                                                                        Math.min(
+                                                                            data.meta.horizonMonths,
+                                                                            parseFloat(e.target.value) || 0
+                                                                        )
+                                                                    ),
+                                                                })
+                                                            }
+                                                            className="rounded-xl"
+                                                        />
+                                                    </div>
+                                                )}
+
+                                                {mode === "relative" && (
+                                                    <div className="flex-1">
+                                                        <Label>
+                                                            Relative expression
+                                                            <span className="text-xs text-muted-foreground ml-1">
+                                                                (e.g., s+1m, e-2m, s+25%)
+                                                            </span>
+                                                        </Label>
+                                                        <Input
+                                                            placeholder="s, e, s+1m, e-2m, s+25%"
+                                                            value={relativeInput}
+                                                            onChange={(e) => handleRelativeChange(e.target.value)}
+                                                            className={`rounded-xl font-mono text-sm ${
+                                                                relativeError ? "border-red-500 bg-red-50" : ""
+                                                            }`}
+                                                        />
+                                                        {relativeError && (
+                                                            <div className="text-xs text-red-600 mt-1">{relativeError}</div>
+                                                        )}
                                                     </div>
                                                 )}
 
                                                 <div className="flex-1">
-                                                    <Label>New Count</Label>
+                                                    <Label>Resolved month</Label>
+                                                    <Input
+                                                        type="text"
+                                                        value={`M${resolvedMonth}`}
+                                                        disabled
+                                                        className="rounded-xl bg-muted font-mono"
+                                                    />
+                                                </div>
+
+                                                <div className="flex-1">
+                                                    <Label>New count</Label>
                                                     <Input
                                                         type="number"
                                                         min={0}
