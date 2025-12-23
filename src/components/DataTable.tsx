@@ -28,7 +28,7 @@ export function DataTable<T extends { id: string }>(props: {
                 </Button>
             </CardHeader>
             <CardContent>
-                <div className="overflow-auto rounded-xl border">
+                <div className="overflow-x-auto overflow-y-visible rounded-xl border">
                     <table className="w-full text-sm">
                         <thead className="sticky top-0 bg-background">
                             <tr className="border-b">
@@ -68,7 +68,7 @@ export function DataTable<T extends { id: string }>(props: {
                                     {/* Drag handle and insert button column - appears on hover */}
                                     <td className="p-0 align-top relative">
                                         {hoveredRowIndex === idx && (
-                                            <div className="absolute left-0 top-0 flex items-center gap-0.5 bg-background p-1 shadow-sm rounded-r-lg border border-l-0 z-10">
+                                            <div className="absolute right-full top-0 flex items-center gap-0.5 bg-background p-1 shadow-sm rounded-l-lg border border-r-0 z-10">
                                                 <div
                                                     className="rounded-lg h-6 w-6 p-0 cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-muted transition-colors"
                                                     title="Drag to reorder"

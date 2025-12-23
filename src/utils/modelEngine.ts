@@ -126,12 +126,38 @@ export function computeSeries(
     // Compute task dates with dependencies
     const computedTasks = computeTaskDates(data.tasks, start);
 
+    // Helper function to get the count for a task at a given month
+    const getTaskCountAtMonth = (task: Task, month: number): number => {
+        const baseCount = task.count ?? 1;
+
+        // If no schedule, return base count
+        if (!task.countSchedule || task.countSchedule.length === 0) {
+            return baseCount;
+        }
+
+        // Sort schedule by month to ensure we're finding the right value
+        const sortedSchedule = [...task.countSchedule].sort((a, b) => a.month - b.month);
+
+        // Find the most recent schedule point at or before the current month
+        let currentCount = baseCount;
+        for (const point of sortedSchedule) {
+            if (point.month <= month) {
+                currentCount = point.count;
+            } else {
+                break;
+            }
+        }
+
+        return currentCount;
+    };
+
     const taskMonthlyCost = (m: number) => {
         const monthStartISO = addMonths(start, m);
         return computedTasks.reduce((sum, t) => {
             if (isWithin(monthStartISO, t.computedStart, t.computedEnd)) {
                 const multiplier = taskMultipliers[t.id] ?? 1;
-                return sum + t.costMonthly * multiplier;
+                const count = getTaskCountAtMonth(t, m);
+                return sum + t.costMonthly * multiplier * count;
             }
             return sum;
         }, 0);
@@ -141,7 +167,8 @@ export function computeSeries(
         computedTasks.reduce((sum, t) => {
             if (monthIndexFromStart(start, t.computedStart) === m) {
                 const multiplier = taskMultipliers[t.id] ?? 1;
-                return sum + t.costOneOff * multiplier;
+                const count = getTaskCountAtMonth(t, m);
+                return sum + t.costOneOff * multiplier * count;
             }
             return sum;
         }, 0);

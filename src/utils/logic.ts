@@ -228,6 +228,33 @@ export function streamMarginAtMonth(
 }
 
 /**
+ * Get the count for a task at a specific month (handles countSchedule)
+ */
+function getTaskCountAtMonth(task: ComputedTask, monthIndex: number): number {
+    const baseCount = task.count ?? 1;
+
+    // If no schedule, return base count
+    if (!task.countSchedule || task.countSchedule.length === 0) {
+        return baseCount;
+    }
+
+    // Sort schedule by month to ensure we're finding the right value
+    const sortedSchedule = [...task.countSchedule].sort((a, b) => a.month - b.month);
+
+    // Find the most recent schedule point at or before the current month
+    let currentCount = baseCount;
+    for (const point of sortedSchedule) {
+        if (point.month <= monthIndex) {
+            currentCount = point.count;
+        } else {
+            break;
+        }
+    }
+
+    return currentCount;
+}
+
+/**
  * Calculate cost for a task at a specific month
  */
 export function taskCostAtMonth(
@@ -242,8 +269,11 @@ export function taskCostAtMonth(
 
     if (!isActive) return { oneOff: 0, monthly: 0, total: 0 };
 
-    const oneOff = isStartMonth ? task.costOneOff * taskMultiplier : 0;
-    const monthly = task.costMonthly * taskMultiplier;
+    // Get count for this task at this month
+    const count = getTaskCountAtMonth(task, monthIndex);
+
+    const oneOff = isStartMonth ? task.costOneOff * taskMultiplier * count : 0;
+    const monthly = task.costMonthly * taskMultiplier * count;
     const total = oneOff + monthly;
 
     return { oneOff, monthly, total };

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import type { VentureData, Task, FixedCost, ComputedTask, Phase } from "../types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -292,6 +293,7 @@ function DraggableTaskTimeline({
 }
 
 export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
+    const navigate = useNavigate();
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(data.tasks[0]?.id ?? null);
     const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
     const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
@@ -364,14 +366,34 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                     ? monthIndexFromStart(data.meta.start, computed.computedEnd)
                     : data.meta.horizonMonths;
 
+                // Get count for this task at this month
+                const getTaskCountAtMonth = (task: Task, month: number): number => {
+                    const baseCount = task.count ?? 1;
+                    if (!task.countSchedule || task.countSchedule.length === 0) {
+                        return baseCount;
+                    }
+                    const sortedSchedule = [...task.countSchedule].sort((a, b) => a.month - b.month);
+                    let currentCount = baseCount;
+                    for (const point of sortedSchedule) {
+                        if (point.month <= month) {
+                            currentCount = point.count;
+                        } else {
+                            break;
+                        }
+                    }
+                    return currentCount;
+                };
+
+                const count = getTaskCountAtMonth(task, i);
+
                 // One-off costs at start month
                 if (i === taskStartMonth && task.costOneOff) {
-                    taskOneOffCosts += task.costOneOff;
+                    taskOneOffCosts += task.costOneOff * count;
                 }
 
                 // Monthly costs during task duration
                 if (i >= taskStartMonth && i <= taskEndMonth && task.costMonthly) {
-                    taskMonthlyCosts += task.costMonthly;
+                    taskMonthlyCosts += task.costMonthly * count;
                 }
             }
 
@@ -571,7 +593,14 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                     key: "id",
                                     header: "ID",
                                     width: "110px",
-                                    render: (v) => <span className="text-sm font-mono">{v}</span>,
+                                    render: (v, row) => (
+                                        <button
+                                            onClick={() => navigate(`/cost/${row.id}`)}
+                                            className="text-sm font-mono text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                        >
+                                            {v}
+                                        </button>
+                                    ),
                                 },
                                 {
                                     key: "color" as any,
@@ -642,6 +671,26 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                 },
                                 { key: "costOneOff", header: "One-off cost", width: "140px", input: "number" },
                                 { key: "costMonthly", header: "Monthly cost", width: "140px", input: "number" },
+                                {
+                                    key: "count",
+                                    header: "Count (headcount)",
+                                    width: "140px",
+                                    render: (v, row) => {
+                                        return (
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                className="h-8 rounded-xl"
+                                                value={v ?? 1}
+                                                placeholder="1"
+                                                onChange={(e) => {
+                                                    const newCount = Math.max(1, parseInt(e.target.value) || 1);
+                                                    setTasks(data.tasks.map((t) => (t.id === row.id ? { ...t, count: newCount } : t)));
+                                                }}
+                                            />
+                                        );
+                                    },
+                                },
                                 {
                                     key: "dependsOn",
                                     header: "Depends on (e.g., T1e+2w, T3-1m)",

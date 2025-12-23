@@ -148,6 +148,11 @@ export type Risk = {
 // Tasks (Project Management)
 // ============================================================================
 
+export type CountSchedulePoint = {
+    month: number; // Month number from plan start
+    count: number; // New count at this month
+};
+
 export type Task = {
     id: string;
     name: string;
@@ -156,6 +161,8 @@ export type Task = {
     costOneOff: number;
     costMonthly: number;
     dependsOn: string[]; // Format: ["T1", "T1e+2w", "T2s+3d"] - ID + optional (s|e) + optional +duration
+    count?: number; // Number of resources (e.g., 8 developers) - defaults to 1 if not specified
+    countSchedule?: CountSchedulePoint[]; // Optional schedule of count changes over time
 };
 
 export type ComputedTask = Task & {

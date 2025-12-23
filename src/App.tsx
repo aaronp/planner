@@ -28,6 +28,7 @@ import { generatePDF } from "./utils/pdfExport";
 // Route Pages
 import { SummaryPage } from "./pages/SummaryPage";
 import { CostsPage } from "./pages/CostsPage";
+import { CostDetailPage } from "./pages/CostDetailPage";
 import { PhasesPage } from "./pages/PhasesPage";
 import { RevenueStreamsPage } from "./pages/RevenueStreamsPage";
 import { RevenueStreamDetailPage } from "./pages/RevenueStreamDetailPage";
@@ -292,6 +293,15 @@ function AppContent() {
                                     setTasks={setTasks}
                                     setFixedCosts={setFixedCosts}
                                     setPhases={setPhases}
+                                />
+                            }
+                        />
+                        <Route
+                            path="/cost/:id"
+                            element={
+                                <CostDetailPage
+                                    data={data}
+                                    setTasks={setTasks}
                                 />
                             }
                         />
