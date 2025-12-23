@@ -6,7 +6,7 @@ import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, TrendingUp, TrendingDown, PlayCircle, Sparkles, ArrowRight } from "lucide-react";
+import { AlertCircle, TrendingUp, TrendingDown, PlayCircle, Sparkles, Zap, LayoutDashboard } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart, BarChart, Bar } from "recharts";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { VentureData } from "../types";
@@ -203,15 +203,19 @@ export function ROIPage({ data, month }: ROIPageProps) {
             <Tabs defaultValue="overview" className="w-full">
                 <TabsList className="rounded-2xl">
                     <TabsTrigger value="overview" className="rounded-2xl">
+                        <LayoutDashboard className="h-4 w-4 mr-2" />
                         Overview
                     </TabsTrigger>
                     <TabsTrigger value="valuation" className="rounded-2xl">
+                        <TrendingUp className="h-4 w-4 mr-2" />
                         Valuation
                     </TabsTrigger>
                     <TabsTrigger value="simulation" className="rounded-2xl">
+                        <Sparkles className="h-4 w-4 mr-2" />
                         Monte Carlo
                     </TabsTrigger>
                     <TabsTrigger value="optimization" className="rounded-2xl">
+                        <Zap className="h-4 w-4 mr-2" />
                         Optimization
                     </TabsTrigger>
                 </TabsList>

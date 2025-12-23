@@ -69,7 +69,7 @@ export function PhasesPage({ data, setPhases }: PhasesPageProps) {
                 <CardHeader>
                     <div className="flex items-center justify-between">
                         <div>
-                            <CardTitle className="text-lg">Timeline Phases</CardTitle>
+                            <CardTitle className="text-lg">Phases</CardTitle>
                             <p className="text-sm text-muted-foreground mt-1">
                                 Define colored timeline phases that appear as backgrounds across all views
                             </p>
@@ -90,93 +90,85 @@ export function PhasesPage({ data, setPhases }: PhasesPageProps) {
                             </Button>
                         </div>
                     ) : (
-                        <DataTable<Phase>
-                            title="Phases"
-                            rows={phases}
-                            setRows={(newPhases) => {
-                                // If a new phase was added (length increased), apply fixup to previous last phase
-                                if (newPhases.length > phases.length) {
-                                    const addedPhase = newPhases[newPhases.length - 1]!;
-                                    if (newPhases.length > 1) {
-                                        const secondLastPhase = newPhases[newPhases.length - 2]!;
-                                        const hasValidDuration = secondLastPhase.duration && isValidDuration(secondLastPhase.duration);
-                                        if (!hasValidDuration) {
-                                            // Fix up the second-to-last phase (which was the last before adding)
-                                            const fixed = newPhases.map((p, idx) =>
-                                                idx === newPhases.length - 2 ? { ...p, duration: "6m" } : p
-                                            );
-                                            setPhases(fixed);
-                                            return;
-                                        }
-                                    }
-                                }
-                                setPhases(newPhases);
-                            }}
-                            addRow={() => ({
-                                id: getNextPhaseId(),
-                                name: "New Phase",
-                                duration: "6m",
-                                color: defaultColors[phases.length % defaultColors.length]!,
-                            })}
-                            columns={[
-                                {
-                                    key: "id",
-                                    header: "ID",
-                                    width: "110px",
-                                    render: (v) => <span className="text-sm font-mono">{v}</span>,
-                                },
-                                { key: "name", header: "Name", width: "260px", input: "text" },
-                                {
-                                    key: "duration",
-                                    header: "Duration (e.g., 6m, 12m)",
-                                    width: "200px",
-                                    render: (v, row) => {
-                                        const isValid = isValidDuration(v || "");
-                                        return (
-                                            <div>
+                        <div className="overflow-x-auto rounded-2xl border">
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/50 sticky top-0">
+                                    <tr className="border-b">
+                                        <th className="text-left p-2 font-medium">ID</th>
+                                        <th className="text-left p-2 font-medium">Name</th>
+                                        <th className="text-left p-2 font-medium">Duration (e.g., 6m, 12m)</th>
+                                        <th className="text-left p-2 font-medium">Color</th>
+                                        <th className="w-12"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {phases.map((phase) => (
+                                        <tr key={phase.id} className="border-b last:border-b-0 hover:bg-muted/30">
+                                            <td className="p-2">
+                                                <span className="text-sm font-mono">{phase.id}</span>
+                                            </td>
+                                            <td className="p-2">
                                                 <Input
-                                                    className={`h-8 rounded-xl ${!isValid ? "bg-red-50 border-red-300" : ""}`}
-                                                    value={v || ""}
-                                                    placeholder="e.g., 6m, 12m"
-                                                    title={!isValid ? "Invalid format. Use: 6m, 12m, 1y" : ""}
+                                                    className="h-8 rounded-xl"
+                                                    value={phase.name}
                                                     onChange={(e) => {
-                                                        setPhases(phases.map((p) => (p.id === row.id ? { ...p, duration: e.target.value } : p)));
+                                                        setPhases(phases.map((p) => (p.id === phase.id ? { ...p, name: e.target.value } : p)));
                                                     }}
                                                 />
-                                                {!isValid && v && (
-                                                    <div className="text-xs text-red-600 mt-1">Invalid format</div>
-                                                )}
-                                            </div>
-                                        );
-                                    },
-                                },
-                                {
-                                    key: "color",
-                                    header: "Color",
-                                    width: "150px",
-                                    render: (v, row) => (
-                                        <div className="flex items-center gap-2">
-                                            <Input
-                                                type="color"
-                                                className="h-8 w-16 rounded-xl cursor-pointer"
-                                                value={v || "#3b82f6"}
-                                                onChange={(e) => {
-                                                    setPhases(phases.map((p) => (p.id === row.id ? { ...p, color: e.target.value } : p)));
-                                                }}
-                                            />
-                                            <div
-                                                className="h-8 flex-1 rounded-xl border"
-                                                style={{ backgroundColor: `${v}20`, borderColor: `${v}60` }}
-                                            >
-                                                <div className="h-full flex items-center justify-center text-xs font-medium" style={{ color: v }}>
-                                                    Preview
+                                            </td>
+                                            <td className="p-2">
+                                                <div>
+                                                    <Input
+                                                        className={`h-8 rounded-xl ${!isValidDuration(phase.duration || "") ? "bg-red-50 border-red-300" : ""}`}
+                                                        value={phase.duration || ""}
+                                                        placeholder="e.g., 6m, 12m"
+                                                        title={!isValidDuration(phase.duration || "") ? "Invalid format. Use: 6m, 12m, 1y" : ""}
+                                                        onChange={(e) => {
+                                                            setPhases(phases.map((p) => (p.id === phase.id ? { ...p, duration: e.target.value } : p)));
+                                                        }}
+                                                    />
+                                                    {!isValidDuration(phase.duration || "") && phase.duration && (
+                                                        <div className="text-xs text-red-600 mt-1">Invalid format</div>
+                                                    )}
                                                 </div>
-                                            </div>
-                                        </div>
-                                    ),
-                                },
-                            ]}
-                        />
+                                            </td>
+                                            <td className="p-2">
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        type="color"
+                                                        className="h-8 w-16 rounded-xl cursor-pointer"
+                                                        value={phase.color || "#3b82f6"}
+                                                        onChange={(e) => {
+                                                            setPhases(phases.map((p) => (p.id === phase.id ? { ...p, color: e.target.value } : p)));
+                                                        }}
+                                                    />
+                                                    <div
+                                                        className="h-8 flex-1 rounded-xl border"
+                                                        style={{ backgroundColor: `${phase.color}20`, borderColor: `${phase.color}60` }}
+                                                    >
+                                                        <div className="h-full flex items-center justify-center text-xs font-medium" style={{ color: phase.color }}>
+                                                            Preview
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="p-2">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setPhases(phases.filter((p) => p.id !== phase.id));
+                                                    }}
+                                                    className="h-8 w-8 p-0 rounded-xl text-destructive hover:bg-destructive/10"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     )}
                 </CardContent>
             </Card>

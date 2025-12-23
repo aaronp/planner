@@ -372,23 +372,37 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
                                     />
                                 </div>
                                 <div>
-                                    <Label>Unlock Event</Label>
-                                    <Select
-                                        value={stream.unlockEventId ?? "none"}
-                                        onValueChange={(v) => updateStream({ unlockEventId: v === "none" ? undefined : v })}
-                                    >
-                                        <SelectTrigger className="rounded-xl">
-                                            <SelectValue placeholder="Select event..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">No event (starts immediately)</SelectItem>
-                                            {(data.timeline ?? []).map((event) => (
-                                                <SelectItem key={event.id} value={event.id}>
-                                                    {event.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <Label>Start Date</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            max={data.meta.horizonMonths}
+                                            value={(() => {
+                                                if (!stream.unlockEventId) return 0;
+                                                const event = (data.timeline ?? []).find(e => e.id === stream.unlockEventId);
+                                                return event?.month ?? 0;
+                                            })()}
+                                            onChange={(e) => {
+                                                const month = Math.max(0, Math.min(data.meta.horizonMonths, parseInt(e.target.value) || 0));
+                                                const existingEvent = (data.timeline ?? []).find(t => t.month === month);
+                                                if (existingEvent) {
+                                                    updateStream({ unlockEventId: existingEvent.id });
+                                                } else {
+                                                    const newEvent = {
+                                                        id: `TL${Date.now()}`,
+                                                        name: `Month ${month}`,
+                                                        month,
+                                                        description: `Auto-created for ${stream.name}`,
+                                                    };
+                                                    setTimeline([...(data.timeline ?? []), newEvent]);
+                                                    updateStream({ unlockEventId: newEvent.id });
+                                                }
+                                            }}
+                                            className="rounded-xl flex-1"
+                                        />
+                                        <span className="text-sm text-muted-foreground">Month</span>
+                                    </div>
                                 </div>
                             </div>
                         </CardContent>

@@ -164,40 +164,28 @@ export function DataPage({ data, setData }: DataPageProps) {
 
     return (
         <div className="space-y-4">
-            <Card className="rounded-2xl shadow-sm">
-                <CardHeader>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <CardTitle className="text-lg">Data Management</CardTitle>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                Export, import, or reset your venture plan data
-                            </p>
-                        </div>
-                        <div className="flex gap-2">
-                            <Button onClick={() => setSaveModalOpen(true)} variant="outline" className="rounded-2xl">
-                                <Save className="h-4 w-4 mr-2" />
-                                Save
-                            </Button>
-                            <Button onClick={() => setImportModalOpen(true)} variant="outline" className="rounded-2xl">
-                                <FolderOpen className="h-4 w-4 mr-2" />
-                                Load
-                            </Button>
-                            <Button onClick={handleExport} variant="outline" className="rounded-2xl">
-                                <Download className="h-4 w-4 mr-2" />
-                                Export JSON
-                            </Button>
-                            <Button onClick={handleImport} variant="outline" className="rounded-2xl">
-                                <Upload className="h-4 w-4 mr-2" />
-                                Import JSON
-                            </Button>
-                            <Button onClick={handleReset} variant="destructive" className="rounded-2xl">
-                                <RefreshCw className="h-4 w-4 mr-2" />
-                                Reset to Default
-                            </Button>
-                        </div>
-                    </div>
-                </CardHeader>
-            </Card>
+            <div className="flex gap-2">
+                <Button onClick={() => setSaveModalOpen(true)} variant="outline" className="rounded-2xl">
+                    <Save className="h-4 w-4 mr-2" />
+                    Save
+                </Button>
+                <Button onClick={() => setImportModalOpen(true)} variant="outline" className="rounded-2xl">
+                    <FolderOpen className="h-4 w-4 mr-2" />
+                    Load
+                </Button>
+                <Button onClick={handleExport} variant="outline" className="rounded-2xl">
+                    <Download className="h-4 w-4 mr-2" />
+                    Export JSON
+                </Button>
+                <Button onClick={handleImport} variant="outline" className="rounded-2xl">
+                    <Upload className="h-4 w-4 mr-2" />
+                    Import JSON
+                </Button>
+                <Button onClick={handleReset} variant="destructive" className="rounded-2xl">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Reset to Default
+                </Button>
+            </div>
 
             <Card className="rounded-2xl shadow-sm">
                 <CardHeader>

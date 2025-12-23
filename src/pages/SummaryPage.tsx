@@ -13,11 +13,11 @@ type SummaryPageProps = {
 
 export function SummaryPage({ data, month }: SummaryPageProps) {
     return (
-        <Tabs defaultValue="dashboard" className="w-full">
+        <Tabs defaultValue="overview" className="w-full">
             <TabsList className="mb-4">
-                <TabsTrigger value="dashboard">
+                <TabsTrigger value="overview">
                     <LayoutDashboard className="h-4 w-4 mr-2" />
-                    Dashboard
+                    Overview
                 </TabsTrigger>
                 <TabsTrigger value="timeline">
                     <Calendar className="h-4 w-4 mr-2" />
@@ -33,7 +33,7 @@ export function SummaryPage({ data, month }: SummaryPageProps) {
                 </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="dashboard">
+            <TabsContent value="overview">
                 <SummaryView data={data} month={month} />
             </TabsContent>
 
