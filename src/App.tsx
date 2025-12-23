@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { ChevronDown, ChevronUp, FileDown } from "lucide-react";
+import { ChevronDown, ChevronUp, FileDown, Moon, Sun } from "lucide-react";
 import {
     Select,
     SelectContent,
@@ -22,6 +22,7 @@ import { fmtCurrency } from "./utils/formatUtils";
 import { computeSeries } from "./utils/modelEngine";
 import { formatMonthLabel } from "./utils/dateUtils";
 import { RiskProvider, useRisk } from "./contexts/RiskContext";
+import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import { RiskScaleComponent } from "./components/RiskScaleComponent";
 import { generatePDF } from "./utils/pdfExport";
 
@@ -62,6 +63,7 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
 
 function AppContent() {
     const { multipliers, setMultipliers, distributionSelection, setDistributionSelection, streamDistributions, setStreamDistributions } = useRisk();
+    const { setTheme, actualTheme } = useTheme();
 
     const [data, setData] = useState<VentureData>(() => {
         if (typeof window === "undefined") return DEFAULT;
@@ -120,6 +122,19 @@ function AppContent() {
                                 {/* <div className="text-sm font-medium">Plan Details</div> */}
                                 <h1 className="text-2xl font-semibold">{data.meta.name}</h1>
                                 <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setTheme(actualTheme === "dark" ? "light" : "dark")}
+                                        className="rounded-xl h-7 w-7 p-0"
+                                        title={`Switch to ${actualTheme === "dark" ? "light" : "dark"} mode`}
+                                    >
+                                        {actualTheme === "dark" ? (
+                                            <Sun className="h-4 w-4" />
+                                        ) : (
+                                            <Moon className="h-4 w-4" />
+                                        )}
+                                    </Button>
                                     <Button
                                         variant="outline"
                                         size="sm"
@@ -344,8 +359,10 @@ function AppContent() {
 
 export default function App() {
     return (
-        <RiskProvider>
-            <AppContent />
-        </RiskProvider>
+        <ThemeProvider>
+            <RiskProvider>
+                <AppContent />
+            </RiskProvider>
+        </ThemeProvider>
     );
 }

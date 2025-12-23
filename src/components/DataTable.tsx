@@ -16,25 +16,13 @@ export function DataTable<T extends { id: string }>(props: {
     const [hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
-    return (
-        <Card className="rounded-2xl shadow-sm">
-            {title && (
-                <CardHeader className="flex flex-row items-center justify-between gap-3">
-                    <div>
-                        <CardTitle className="text-base">{title}</CardTitle>
-                        <div className="text-sm text-muted-foreground">Edit values directly. Changes save automatically.</div>
-                    </div>
-                    <Button onClick={() => setRows([...rows, addRow()])} variant="secondary" className="rounded-2xl">
-                        <Plus className="h-4 w-4 mr-2" /> Add
-                    </Button>
-                </CardHeader>
-            )}
-            <CardContent className="relative">
-                <div className="overflow-x-auto overflow-y-visible rounded-xl border">
+    const tableContent = (
+        <div className="relative overflow-visible">
+            <div className="overflow-visible rounded-xl border">
                     <table className="w-full text-sm">
                         <thead className="sticky top-0 bg-background">
                             <tr className="border-b">
-                                <th className="p-2 w-[40px]" />
+                                <th className="p-0 w-[52px]" />
                                 {columns.map((c) => (
                                     <th key={String(c.key)} className="text-left font-medium p-2" style={{ width: c.width }}>
                                         {c.header}
@@ -68,39 +56,42 @@ export function DataTable<T extends { id: string }>(props: {
                                     }}
                                 >
                                     {/* Drag handle and insert button column - appears on hover */}
-                                    <td className="p-0 align-top relative">
-                                        {hoveredRowIndex === idx && (
-                                            <div className="absolute right-full top-0 flex items-center gap-0.5 bg-background p-1 shadow-sm rounded-l-lg border border-r-0 z-10 mr-1">
-                                                <div
-                                                    className="rounded-lg h-6 w-6 p-0 cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-muted transition-colors"
-                                                    title="Drag to reorder"
-                                                    draggable
-                                                    onDragStart={(e) => {
-                                                        setDraggedIndex(idx);
-                                                        e.dataTransfer.effectAllowed = "move";
-                                                    }}
-                                                    onDragEnd={() => {
-                                                        setDraggedIndex(null);
-                                                    }}
-                                                >
-                                                    <GripVertical className="h-3 w-3 text-muted-foreground" />
-                                                </div>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="rounded-lg h-6 w-6 p-0"
-                                                    onClick={() => {
-                                                        const newRow = addRow();
-                                                        const newRows = [...rows];
-                                                        newRows.splice(idx + 1, 0, newRow);
-                                                        setRows(newRows);
-                                                    }}
-                                                    title="Insert row below"
-                                                >
-                                                    <Plus className="h-3 w-3" />
-                                                </Button>
+                                    <td className="p-0 align-top relative w-[52px] min-w-[52px]">
+                                        <div
+                                            className="flex items-center gap-1 p-1 transition-opacity"
+                                            style={{ opacity: hoveredRowIndex === idx ? 1 : 0 }}
+                                            onMouseEnter={() => setHoveredRowIndex(idx)}
+                                            onMouseLeave={() => setHoveredRowIndex(null)}
+                                        >
+                                            <div
+                                                className="rounded-lg h-8 w-8 p-0 cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-muted transition-colors"
+                                                title="Drag to reorder"
+                                                draggable
+                                                onDragStart={(e) => {
+                                                    setDraggedIndex(idx);
+                                                    e.dataTransfer.effectAllowed = "move";
+                                                }}
+                                                onDragEnd={() => {
+                                                    setDraggedIndex(null);
+                                                }}
+                                            >
+                                                <GripVertical className="h-4 w-4 text-muted-foreground" />
                                             </div>
-                                        )}
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="rounded-lg h-8 w-8 p-0"
+                                                onClick={() => {
+                                                    const newRow = addRow();
+                                                    const newRows = [...rows];
+                                                    newRows.splice(idx + 1, 0, newRow);
+                                                    setRows(newRows);
+                                                }}
+                                                title="Insert row below"
+                                            >
+                                                <Plus className="h-4 w-4" />
+                                            </Button>
+                                        </div>
                                     </td>
                                     {columns.map((c) => {
                                         const val = (r as any)[c.key];
@@ -150,7 +141,25 @@ export function DataTable<T extends { id: string }>(props: {
                         </tbody>
                     </table>
                 </div>
-            </CardContent>
-        </Card>
+        </div>
     );
+
+    if (title) {
+        return (
+            <Card className="rounded-2xl shadow-sm">
+                <CardHeader className="flex flex-row items-center justify-between gap-3">
+                    <div>
+                        <CardTitle className="text-base">{title}</CardTitle>
+                        <div className="text-sm text-muted-foreground">Edit values directly. Changes save automatically.</div>
+                    </div>
+                    <Button onClick={() => setRows([...rows, addRow()])} variant="secondary" className="rounded-2xl">
+                        <Plus className="h-4 w-4 mr-2" /> Add
+                    </Button>
+                </CardHeader>
+                <CardContent className="relative overflow-visible">{tableContent}</CardContent>
+            </Card>
+        );
+    }
+
+    return tableContent;
 }

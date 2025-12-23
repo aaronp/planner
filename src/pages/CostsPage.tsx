@@ -508,8 +508,8 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
     };
 
     return (
-        <div className="w-full">
-                <div className="space-y-4">
+        <div className="w-full overflow-visible">
+                <div className="space-y-4 overflow-visible">
                     {/* Draggable Timeline */}
                     {data.tasks.length > 0 && (
                         <DraggableTaskTimeline
@@ -526,7 +526,7 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
 
                     {/* Two-column layout */}
                     <div
-                        className="grid gap-4"
+                        className="grid gap-4 overflow-visible"
                         style={{
                             gridTemplateColumns: leftPanelCollapsed
                                 ? "32px 1fr"
@@ -551,7 +551,7 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                 </div>
                             </div>
                         ) : (
-                            <Card className="rounded-2xl shadow-sm border-2">
+                            <Card className="rounded-2xl shadow-sm border-2 overflow-visible">
                                 <CardHeader className="pb-3">
                                     <div className="flex items-center justify-between">
                                         <CardTitle className="text-base">Costs</CardTitle>
@@ -595,7 +595,7 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                         </div>
                                     </div>
                                 </CardHeader>
-                                <CardContent className="p-6 pt-0">
+                                <CardContent className="p-6 pt-0 overflow-visible">
                         <DataTable<Task>
                             title=""
                             rows={data.tasks}
