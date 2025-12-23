@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "../components/DataTable";
-import { ArrowLeft, Trash2, TrendingUp, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, Trash2, TrendingUp, ChevronLeft, ChevronRight, BarChart3, Table as TableIcon } from "lucide-react";
 import { fmtCurrency } from "../utils/formatUtils";
 import { calculateStreamMonthlyMetrics, getDistributionMode } from "../utils/logic";
 import { Line, LineChart, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, Legend } from "recharts";
@@ -126,6 +126,7 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
 
     // Preview distribution selection
     const [previewDistribution, setPreviewDistribution] = useState<"min" | "mode" | "max">("mode");
+    const [revenuePreviewMode, setRevenuePreviewMode] = useState<"graph" | "table">("graph");
 
     const stream = (data.revenueStreams ?? []).find((s) => s.id === id);
 
@@ -831,18 +832,40 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
                                     <TrendingUp className="h-5 w-5" />
                                     <CardTitle className="text-base">Revenue Projection</CardTitle>
                                 </div>
-                                {!leftPanelCollapsed && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setRightPanelCollapsed(true)}
-                                        className="rounded-xl h-7 px-2"
-                                        title="Collapse preview panel"
-                                    >
-                                        Collapse
-                                        <ChevronRight className="h-4 w-4 ml-1" />
-                                    </Button>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    <div className="flex items-center rounded-xl border">
+                                        <Button
+                                            variant={revenuePreviewMode === "graph" ? "default" : "ghost"}
+                                            size="sm"
+                                            onClick={() => setRevenuePreviewMode("graph")}
+                                            className="rounded-l-xl rounded-r-none h-7 px-2"
+                                            title="Graph view"
+                                        >
+                                            <BarChart3 className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            variant={revenuePreviewMode === "table" ? "default" : "ghost"}
+                                            size="sm"
+                                            onClick={() => setRevenuePreviewMode("table")}
+                                            className="rounded-r-xl rounded-l-none h-7 px-2"
+                                            title="Table view"
+                                        >
+                                            <TableIcon className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                    {!leftPanelCollapsed && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setRightPanelCollapsed(true)}
+                                            className="rounded-xl h-7 px-2"
+                                            title="Collapse preview panel"
+                                        >
+                                            Collapse
+                                            <ChevronRight className="h-4 w-4 ml-1" />
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
                             <div className="flex gap-1 mt-3">
                                 <Button
@@ -872,7 +895,9 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
                             </div>
                         </CardHeader>
                         <CardContent>
-                            <div className="h-[400px]">
+                            {revenuePreviewMode === "graph" && (
+                                <>
+                                    <div className="h-[400px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={previewData}>
                                         <CartesianGrid strokeDasharray="3 3" />
@@ -957,14 +982,21 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
                                     </p>
                                 </div>
                             </div>
+                                </>
+                            )}
 
-                            {/* Tabular View */}
-                            <div className="mt-6">
+                            {revenuePreviewMode === "table" && (
+                                <>
+                                    {/* Tabular View */}
+                                    <div>
                                 <h3 className="text-sm font-semibold mb-3">Monthly Breakdown</h3>
                                 <div className="rounded-lg border max-h-[400px] overflow-auto">
                                     <table className="w-full text-xs">
                                         <thead className="sticky top-0 bg-background border-b">
                                             <tr>
+                                                {data.phases && data.phases.length > 0 && (
+                                                    <th className="text-left p-2 font-medium">Phase</th>
+                                                )}
                                                 <th className="text-left p-2 font-medium">Month</th>
                                                 <th className="text-right p-2 font-medium">Users</th>
                                                 <th className="text-right p-2 font-medium">Revenue</th>
@@ -976,29 +1008,166 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {previewData.map((row, idx) => {
-                                                const cumulativeProfit = previewData
-                                                    .slice(0, idx + 1)
-                                                    .reduce((sum, r) => sum + (r.profit || 0), 0);
-                                                const grossMargin = row.revenue - (row.deliveryCosts || 0);
+                                            {(() => {
+                                                const phases = data.phases ?? [];
+                                                const hasPhases = phases.length > 0;
 
-                                                return (
-                                                    <tr key={idx} className="border-b hover:bg-muted/30">
-                                                        <td className="p-2">{idx + 1}</td>
-                                                        <td className="p-2 text-right">{Math.round(row.users)}</td>
-                                                        <td className="p-2 text-right">{fmtCurrency(row.revenue, data.meta.currency)}</td>
-                                                        <td className="p-2 text-right">{fmtCurrency(row.deliveryCosts || 0, data.meta.currency)}</td>
-                                                        <td className="p-2 text-right">{fmtCurrency(row.acquisitionCosts || 0, data.meta.currency)}</td>
-                                                        <td className="p-2 text-right font-medium">{fmtCurrency(grossMargin, data.meta.currency)}</td>
-                                                        <td className="p-2 text-right font-medium">{fmtCurrency(row.profit || 0, data.meta.currency)}</td>
-                                                        <td className="p-2 text-right font-semibold">{fmtCurrency(cumulativeProfit, data.meta.currency)}</td>
-                                                    </tr>
-                                                );
-                                            })}
+                                                // Helper to get phase for a month
+                                                const getPhaseForMonth = (month: number) => {
+                                                    if (!hasPhases) return null;
+                                                    let currentMonth = 0;
+                                                    for (let i = 0; i < phases.length; i++) {
+                                                        const phase = phases[i]!;
+                                                        const match = phase.duration.match(/^(\d+)([dwmy])$/);
+                                                        let durationMonths = 0;
+                                                        if (match) {
+                                                            const value = parseInt(match[1]!, 10);
+                                                            const unit = match[2]!;
+                                                            if (unit === "d") durationMonths = value / 30;
+                                                            else if (unit === "w") durationMonths = value / 4;
+                                                            else if (unit === "m") durationMonths = value;
+                                                            else if (unit === "y") durationMonths = value * 12;
+                                                        } else {
+                                                            // Endless phase - extends to horizon
+                                                            durationMonths = data.meta.horizonMonths - currentMonth;
+                                                        }
+                                                        if (month >= currentMonth && month < currentMonth + durationMonths) {
+                                                            return { phase, index: i, startMonth: currentMonth, endMonth: currentMonth + durationMonths };
+                                                        }
+                                                        currentMonth += durationMonths;
+                                                    }
+                                                    return null;
+                                                };
+
+                                                const rows: JSX.Element[] = [];
+                                                let currentPhaseIndex = -1;
+                                                let phaseStartIdx = 0;
+                                                let phaseUsers = 0;
+                                                let phaseRevenue = 0;
+                                                let phaseDeliveryCosts = 0;
+                                                let phaseAcqCosts = 0;
+                                                let phaseGrossMargin = 0;
+                                                let phaseNetProfit = 0;
+
+                                                previewData.forEach((row, idx) => {
+                                                    const monthNumber = idx;
+                                                    const phaseInfo = getPhaseForMonth(monthNumber);
+                                                    const phaseIndex = phaseInfo?.index ?? -1;
+                                                    const cumulativeProfit = previewData
+                                                        .slice(0, idx + 1)
+                                                        .reduce((sum, r) => sum + (r.profit || 0), 0);
+                                                    const grossMargin = row.revenue - (row.deliveryCosts || 0);
+
+                                                    // Check if we've moved to a new phase
+                                                    if (hasPhases && phaseIndex !== currentPhaseIndex) {
+                                                        // Add summary row for previous phase (if exists)
+                                                        if (currentPhaseIndex >= 0) {
+                                                            rows.push(
+                                                                <tr key={`summary-${currentPhaseIndex}`} className="bg-muted/50 border-b-2 font-bold">
+                                                                    {hasPhases && <td className="p-2"></td>}
+                                                                    <td className="p-2">Phase Total</td>
+                                                                    <td className="p-2 text-right">{Math.round(phaseUsers)}</td>
+                                                                    <td className="p-2 text-right">
+                                                                        {fmtCurrency(phaseRevenue, data.meta.currency)}
+                                                                    </td>
+                                                                    <td className="p-2 text-right">
+                                                                        {fmtCurrency(phaseDeliveryCosts, data.meta.currency)}
+                                                                    </td>
+                                                                    <td className="p-2 text-right">
+                                                                        {fmtCurrency(phaseAcqCosts, data.meta.currency)}
+                                                                    </td>
+                                                                    <td className="p-2 text-right">
+                                                                        {fmtCurrency(phaseGrossMargin, data.meta.currency)}
+                                                                    </td>
+                                                                    <td className="p-2 text-right">
+                                                                        {fmtCurrency(phaseNetProfit, data.meta.currency)}
+                                                                    </td>
+                                                                    <td className="p-2 text-right"></td>
+                                                                </tr>
+                                                            );
+                                                        }
+
+                                                        // Reset phase accumulation
+                                                        currentPhaseIndex = phaseIndex;
+                                                        phaseStartIdx = idx;
+                                                        phaseUsers = 0;
+                                                        phaseRevenue = 0;
+                                                        phaseDeliveryCosts = 0;
+                                                        phaseAcqCosts = 0;
+                                                        phaseGrossMargin = 0;
+                                                        phaseNetProfit = 0;
+                                                    }
+
+                                                    // Accumulate phase totals
+                                                    phaseUsers += row.users;
+                                                    phaseRevenue += row.revenue;
+                                                    phaseDeliveryCosts += row.deliveryCosts || 0;
+                                                    phaseAcqCosts += row.acquisitionCosts || 0;
+                                                    phaseGrossMargin += grossMargin;
+                                                    phaseNetProfit += row.profit || 0;
+
+                                                    // Add regular row
+                                                    rows.push(
+                                                        <tr key={idx} className="border-b hover:bg-muted/30">
+                                                            {hasPhases && idx === phaseStartIdx && (
+                                                                <td
+                                                                    className="p-2 font-medium text-center align-top"
+                                                                    style={{
+                                                                        backgroundColor: `${phaseInfo?.phase.color}15`,
+                                                                        color: phaseInfo?.phase.color,
+                                                                    }}
+                                                                    rowSpan={Math.ceil((phaseInfo?.endMonth ?? 0) - (phaseInfo?.startMonth ?? 0))}
+                                                                >
+                                                                    {phaseInfo?.phase.name}
+                                                                </td>
+                                                            )}
+                                                            <td className="p-2">{idx + 1}</td>
+                                                            <td className="p-2 text-right">{Math.round(row.users)}</td>
+                                                            <td className="p-2 text-right">{fmtCurrency(row.revenue, data.meta.currency)}</td>
+                                                            <td className="p-2 text-right">{fmtCurrency(row.deliveryCosts || 0, data.meta.currency)}</td>
+                                                            <td className="p-2 text-right">{fmtCurrency(row.acquisitionCosts || 0, data.meta.currency)}</td>
+                                                            <td className="p-2 text-right font-medium">{fmtCurrency(grossMargin, data.meta.currency)}</td>
+                                                            <td className="p-2 text-right font-medium">{fmtCurrency(row.profit || 0, data.meta.currency)}</td>
+                                                            <td className="p-2 text-right font-semibold">{fmtCurrency(cumulativeProfit, data.meta.currency)}</td>
+                                                        </tr>
+                                                    );
+
+                                                    // Add summary row for last phase if this is the last row
+                                                    if (idx === previewData.length - 1 && hasPhases && currentPhaseIndex >= 0) {
+                                                        rows.push(
+                                                            <tr key={`summary-${currentPhaseIndex}`} className="bg-muted/50 border-b-2 font-bold">
+                                                                {hasPhases && <td className="p-2"></td>}
+                                                                <td className="p-2">Phase Total</td>
+                                                                <td className="p-2 text-right">{Math.round(phaseUsers)}</td>
+                                                                <td className="p-2 text-right">
+                                                                    {fmtCurrency(phaseRevenue, data.meta.currency)}
+                                                                </td>
+                                                                <td className="p-2 text-right">
+                                                                    {fmtCurrency(phaseDeliveryCosts, data.meta.currency)}
+                                                                </td>
+                                                                <td className="p-2 text-right">
+                                                                    {fmtCurrency(phaseAcqCosts, data.meta.currency)}
+                                                                </td>
+                                                                <td className="p-2 text-right">
+                                                                    {fmtCurrency(phaseGrossMargin, data.meta.currency)}
+                                                                </td>
+                                                                <td className="p-2 text-right">
+                                                                    {fmtCurrency(phaseNetProfit, data.meta.currency)}
+                                                                </td>
+                                                                <td className="p-2 text-right"></td>
+                                                            </tr>
+                                                        );
+                                                    }
+                                                });
+
+                                                return rows;
+                                            })()}
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
+                                </>
+                            )}
                         </CardContent>
                     </Card>
                 )}

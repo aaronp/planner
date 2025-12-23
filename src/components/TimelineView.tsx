@@ -72,21 +72,26 @@ export function TimelineView({
     // Listen to storage events to reload colors when they change
     React.useEffect(() => {
         const handleStorage = (e: StorageEvent) => {
-            if (e.key === "streamColors") {
+            if (e.key === "streamColors" || e.key === "taskColors") {
                 setStorageVersion(v => v + 1);
             }
         };
         window.addEventListener("storage", handleStorage);
 
         // Also listen for custom event from same window (storage event doesn't fire in same window)
-        const handleCustomStorage = () => {
+        const handleCustomStreamColors = () => {
             setStorageVersion(v => v + 1);
         };
-        window.addEventListener("streamColorsChanged", handleCustomStorage);
+        const handleCustomTaskColors = () => {
+            setStorageVersion(v => v + 1);
+        };
+        window.addEventListener("streamColorsChanged", handleCustomStreamColors);
+        window.addEventListener("taskColorsChanged", handleCustomTaskColors);
 
         return () => {
             window.removeEventListener("storage", handleStorage);
-            window.removeEventListener("streamColorsChanged", handleCustomStorage);
+            window.removeEventListener("streamColorsChanged", handleCustomStreamColors);
+            window.removeEventListener("taskColorsChanged", handleCustomTaskColors);
         };
     }, []);
 
@@ -101,6 +106,18 @@ export function TimelineView({
             return new Map<string, string>();
         }
     }, [data.revenueStreams, storageVersion]);
+
+    // Load task colors from localStorage - reactive to storage changes
+    const taskColors = useMemo(() => {
+        const stored = localStorage.getItem("taskColors");
+        if (!stored) return new Map<string, string>();
+        try {
+            const obj = JSON.parse(stored);
+            return new Map<string, string>(Object.entries(obj));
+        } catch {
+            return new Map<string, string>();
+        }
+    }, [data.tasks, storageVersion]);
 
     // Compute task dates
     const computedTasks = useMemo(() => computeTaskDates(data.tasks, start), [data.tasks, start]);
@@ -226,15 +243,14 @@ export function TimelineView({
     // Calculate cost breakdown by task for current month
     const costBreakdown = useMemo(() => {
         return computedTasks
-            .map((task, idx) => ({
+            .map((task) => ({
                 task,
                 cost: taskCostAtMonth(task, month),
-                // Use varying shades of red for different tasks
-                color: `hsl(0, 70%, ${45 + (idx % 3) * 10}%)`,
+                color: taskColors.get(task.id) || "#3b82f6",
             }))
             .filter((item) => item.cost > 0)
             .sort((a, b) => b.cost - a.cost);
-    }, [computedTasks, month, multipliers.tasks]);
+    }, [computedTasks, month, multipliers.tasks, taskColors]);
 
     return (
         <Card className="rounded-2xl shadow-sm">
@@ -377,7 +393,7 @@ export function TimelineView({
                                         return (
                                             <div
                                                 key={t.id}
-                                                className="grid items-stretch"
+                                                className="grid items-stretch pt-1"
                                                 style={{
                                                     gridTemplateColumns: `260px repeat(${gridCols}, minmax(26px, 1fr)) 240px`,
                                                 }}
@@ -407,14 +423,18 @@ export function TimelineView({
                                                     const monthlyCost = taskCostAtMonth(t, m);
                                                     const costPct = calcBarHeight(monthlyCost, unifiedMax);
                                                     const hasContent = inside && monthlyCost > 0;
+                                                    const taskColor = taskColors.get(t.id) || "#3b82f6";
 
                                                     return (
                                                         <div key={m} className={`border-b ${isCursor ? "bg-muted/60" : ""} relative`}>
                                                             {hasContent ? (
                                                                 <div className="h-full flex flex-col justify-end p-[3px]">
                                                                     <div
-                                                                        className={`rounded-lg ${active ? "bg-red-500/25" : "bg-red-500/15"} ${blocked ? "ring-1 ring-destructive/60" : ""} relative flex items-end justify-center`}
-                                                                        style={{ height: `${Math.max(20, costPct)}%` }}
+                                                                        className={`rounded-lg ${blocked ? "ring-1 ring-destructive/60" : ""} relative flex items-end justify-center`}
+                                                                        style={{
+                                                                            height: `${Math.max(20, costPct)}%`,
+                                                                            backgroundColor: active ? `${taskColor}40` : `${taskColor}26`
+                                                                        }}
                                                                         title={`${t.name}\n${t.computedStart} → ${t.computedEnd || "ongoing"}\nCost this month: ${fmtCurrency(monthlyCost, currency)}\nDuration: ${t.duration || "ongoing"}\nDepends: ${t.dependsOn.join(", ") || "—"}`}
                                                                     >
                                                                         <div
@@ -476,7 +496,7 @@ export function TimelineView({
                                         return (
                                             <div
                                                 key={stream.id}
-                                                className="grid items-stretch"
+                                                className="grid items-stretch pt-1"
                                                 style={{
                                                     gridTemplateColumns: `260px repeat(${gridCols}, minmax(26px, 1fr)) 240px`,
                                                 }}

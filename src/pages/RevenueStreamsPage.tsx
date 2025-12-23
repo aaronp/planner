@@ -158,7 +158,11 @@ function DraggableTimeline({
                             startMonth += durationToMonths(prevPhase.duration);
                         }
 
-                        const durationMonths = durationToMonths(phase.duration);
+                        let durationMonths = durationToMonths(phase.duration);
+                        // If no valid duration, make it extend to the end
+                        if (durationMonths === 0) {
+                            durationMonths = horizonMonths - startMonth;
+                        }
                         const leftPct = (startMonth / horizonMonths) * 100;
                         const widthPct = (durationMonths / horizonMonths) * 100;
                         return (
@@ -638,6 +642,9 @@ export function RevenueStreamsPage({ data, setRevenueStreams, setTimeline }: Rev
                                     <Table>
                                         <TableHeader className="sticky top-0 bg-background">
                                             <TableRow>
+                                                {data.phases && data.phases.length > 0 && (
+                                                    <TableHead>Phase</TableHead>
+                                                )}
                                                 <TableHead>Month</TableHead>
                                                 <TableHead className="text-right">Revenue</TableHead>
                                                 <TableHead className="text-right">Costs</TableHead>
@@ -646,28 +653,141 @@ export function RevenueStreamsPage({ data, setRevenueStreams, setTimeline }: Rev
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {previewData.map((row, idx) => {
-                                                const cumulative = previewData
-                                                    .slice(0, idx + 1)
-                                                    .reduce((sum, d) => sum + d.netProfit, 0);
-                                                return (
-                                                    <TableRow key={row.month}>
-                                                        <TableCell>M{row.month}</TableCell>
-                                                        <TableCell className="text-right">
-                                                            {fmtCurrency(row.revenue, data.meta.currency)}
-                                                        </TableCell>
-                                                        <TableCell className="text-right">
-                                                            {fmtCurrency(row.costs, data.meta.currency)}
-                                                        </TableCell>
-                                                        <TableCell className="text-right">
-                                                            {fmtCurrency(row.netProfit, data.meta.currency)}
-                                                        </TableCell>
-                                                        <TableCell className="text-right font-medium">
-                                                            {fmtCurrency(cumulative, data.meta.currency)}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                );
-                                            })}
+                                            {(() => {
+                                                const phases = data.phases ?? [];
+                                                const hasPhases = phases.length > 0;
+
+                                                // Helper to get phase for a month
+                                                const getPhaseForMonth = (month: number) => {
+                                                    if (!hasPhases) return null;
+                                                    let currentMonth = 0;
+                                                    for (let i = 0; i < phases.length; i++) {
+                                                        const phase = phases[i]!;
+                                                        const match = phase.duration.match(/^(\d+)([dwmy])$/);
+                                                        let durationMonths = 0;
+                                                        if (match) {
+                                                            const value = parseInt(match[1]!, 10);
+                                                            const unit = match[2]!;
+                                                            if (unit === "d") durationMonths = value / 30;
+                                                            else if (unit === "w") durationMonths = value / 4;
+                                                            else if (unit === "m") durationMonths = value;
+                                                            else if (unit === "y") durationMonths = value * 12;
+                                                        } else {
+                                                            // Endless phase - extends to horizon
+                                                            durationMonths = data.meta.horizonMonths - currentMonth;
+                                                        }
+                                                        if (month >= currentMonth && month < currentMonth + durationMonths) {
+                                                            return { phase, index: i, startMonth: currentMonth, endMonth: currentMonth + durationMonths };
+                                                        }
+                                                        currentMonth += durationMonths;
+                                                    }
+                                                    return null;
+                                                };
+
+                                                const rows: JSX.Element[] = [];
+                                                let currentPhaseIndex = -1;
+                                                let phaseStartIdx = 0;
+                                                let phaseRevenue = 0;
+                                                let phaseCosts = 0;
+                                                let phaseNetProfit = 0;
+
+                                                previewData.forEach((row, idx) => {
+                                                    const monthNumber = idx;
+                                                    const phaseInfo = getPhaseForMonth(monthNumber);
+                                                    const phaseIndex = phaseInfo?.index ?? -1;
+                                                    const cumulative = previewData
+                                                        .slice(0, idx + 1)
+                                                        .reduce((sum, d) => sum + d.netProfit, 0);
+
+                                                    // Check if we've moved to a new phase
+                                                    if (hasPhases && phaseIndex !== currentPhaseIndex) {
+                                                        // Add summary row for previous phase (if exists)
+                                                        if (currentPhaseIndex >= 0) {
+                                                            rows.push(
+                                                                <TableRow key={`summary-${currentPhaseIndex}`} className="bg-muted/50 border-b-2 font-bold">
+                                                                    {hasPhases && <TableCell></TableCell>}
+                                                                    <TableCell>Phase Total</TableCell>
+                                                                    <TableCell className="text-right">
+                                                                        {fmtCurrency(phaseRevenue, data.meta.currency)}
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right">
+                                                                        {fmtCurrency(phaseCosts, data.meta.currency)}
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right">
+                                                                        {fmtCurrency(phaseNetProfit, data.meta.currency)}
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right"></TableCell>
+                                                                </TableRow>
+                                                            );
+                                                        }
+
+                                                        // Reset phase accumulation
+                                                        currentPhaseIndex = phaseIndex;
+                                                        phaseStartIdx = idx;
+                                                        phaseRevenue = 0;
+                                                        phaseCosts = 0;
+                                                        phaseNetProfit = 0;
+                                                    }
+
+                                                    // Accumulate phase totals
+                                                    phaseRevenue += row.revenue;
+                                                    phaseCosts += row.costs;
+                                                    phaseNetProfit += row.netProfit;
+
+                                                    // Add regular row
+                                                    rows.push(
+                                                        <TableRow key={row.month}>
+                                                            {hasPhases && idx === phaseStartIdx && (
+                                                                <TableCell
+                                                                    className="font-medium text-center align-top"
+                                                                    style={{
+                                                                        backgroundColor: `${phaseInfo?.phase.color}15`,
+                                                                        color: phaseInfo?.phase.color,
+                                                                    }}
+                                                                    rowSpan={Math.ceil((phaseInfo?.endMonth ?? 0) - (phaseInfo?.startMonth ?? 0))}
+                                                                >
+                                                                    {phaseInfo?.phase.name}
+                                                                </TableCell>
+                                                            )}
+                                                            <TableCell>M{row.month}</TableCell>
+                                                            <TableCell className="text-right">
+                                                                {fmtCurrency(row.revenue, data.meta.currency)}
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                {fmtCurrency(row.costs, data.meta.currency)}
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                {fmtCurrency(row.netProfit, data.meta.currency)}
+                                                            </TableCell>
+                                                            <TableCell className="text-right font-medium">
+                                                                {fmtCurrency(cumulative, data.meta.currency)}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    );
+
+                                                    // Add summary row for last phase if this is the last row
+                                                    if (idx === previewData.length - 1 && hasPhases && currentPhaseIndex >= 0) {
+                                                        rows.push(
+                                                            <TableRow key={`summary-${currentPhaseIndex}`} className="bg-muted/50 border-b-2 font-bold">
+                                                                {hasPhases && <TableCell></TableCell>}
+                                                                <TableCell>Phase Total</TableCell>
+                                                                <TableCell className="text-right">
+                                                                    {fmtCurrency(phaseRevenue, data.meta.currency)}
+                                                                </TableCell>
+                                                                <TableCell className="text-right">
+                                                                    {fmtCurrency(phaseCosts, data.meta.currency)}
+                                                                </TableCell>
+                                                                <TableCell className="text-right">
+                                                                    {fmtCurrency(phaseNetProfit, data.meta.currency)}
+                                                                </TableCell>
+                                                                <TableCell className="text-right"></TableCell>
+                                                            </TableRow>
+                                                        );
+                                                    }
+                                                });
+
+                                                return rows;
+                                            })()}
                                         </TableBody>
                                     </Table>
                                 </div>

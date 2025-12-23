@@ -31,7 +31,8 @@
       "Bash(pkill:*)",
       "Bash(bun:*)",
       "Bash(npx vite --version)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

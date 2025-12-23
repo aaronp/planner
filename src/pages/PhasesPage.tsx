@@ -37,14 +37,30 @@ export function PhasesPage({ data, setPhases }: PhasesPageProps) {
         "#f97316", // Deep Orange
     ];
 
-    const handleAddPhase = () => {
+    const createNewPhaseWithFixup = (currentPhases: Phase[]): Phase[] => {
+        // If the last phase doesn't have a valid duration, set it to 6m
+        let updatedPhases = [...currentPhases];
+        if (currentPhases.length > 0) {
+            const lastPhase = currentPhases[currentPhases.length - 1]!;
+            const hasValidDuration = lastPhase.duration && isValidDuration(lastPhase.duration);
+            if (!hasValidDuration) {
+                updatedPhases = currentPhases.map((p, idx) =>
+                    idx === currentPhases.length - 1 ? { ...p, duration: "6m" } : p
+                );
+            }
+        }
+
         const newPhase: Phase = {
             id: getNextPhaseId(),
             name: "New Phase",
             duration: "6m",
-            color: defaultColors[phases.length % defaultColors.length]!,
+            color: defaultColors[updatedPhases.length % defaultColors.length]!,
         };
-        setPhases([...phases, newPhase]);
+        return [...updatedPhases, newPhase];
+    };
+
+    const handleAddPhase = () => {
+        setPhases(createNewPhaseWithFixup(phases));
     };
 
     return (
@@ -77,7 +93,25 @@ export function PhasesPage({ data, setPhases }: PhasesPageProps) {
                         <DataTable<Phase>
                             title="Phases"
                             rows={phases}
-                            setRows={setPhases}
+                            setRows={(newPhases) => {
+                                // If a new phase was added (length increased), apply fixup to previous last phase
+                                if (newPhases.length > phases.length) {
+                                    const addedPhase = newPhases[newPhases.length - 1]!;
+                                    if (newPhases.length > 1) {
+                                        const secondLastPhase = newPhases[newPhases.length - 2]!;
+                                        const hasValidDuration = secondLastPhase.duration && isValidDuration(secondLastPhase.duration);
+                                        if (!hasValidDuration) {
+                                            // Fix up the second-to-last phase (which was the last before adding)
+                                            const fixed = newPhases.map((p, idx) =>
+                                                idx === newPhases.length - 2 ? { ...p, duration: "6m" } : p
+                                            );
+                                            setPhases(fixed);
+                                            return;
+                                        }
+                                    }
+                                }
+                                setPhases(newPhases);
+                            }}
                             addRow={() => ({
                                 id: getNextPhaseId(),
                                 name: "New Phase",
@@ -186,6 +220,7 @@ export function PhasesPage({ data, setPhases }: PhasesPageProps) {
                                 // Calculate duration for this phase
                                 const match = phase.duration.match(/^(\d+)([dwmy])$/);
                                 let durationMonths = 0;
+                                let isEndless = false;
                                 if (match) {
                                     const value = parseInt(match[1]!, 10);
                                     const unit = match[2]!;
@@ -193,6 +228,10 @@ export function PhasesPage({ data, setPhases }: PhasesPageProps) {
                                     else if (unit === "w") durationMonths = value / 4;
                                     else if (unit === "m") durationMonths = value;
                                     else if (unit === "y") durationMonths = value * 12;
+                                } else {
+                                    // No valid duration - make it endless (extend to horizon)
+                                    durationMonths = data.meta.horizonMonths - startMonth;
+                                    isEndless = true;
                                 }
 
                                 const endMonth = startMonth + durationMonths;

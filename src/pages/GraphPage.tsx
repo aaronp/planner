@@ -86,9 +86,23 @@ export function GraphPage({ data }: GraphPageProps) {
         return new Map();
     });
 
+    // Load task colors from localStorage
+    const [taskColors, setTaskColors] = useState<Map<string, string>>(() => {
+        const stored = localStorage.getItem("taskColors");
+        if (stored) {
+            try {
+                const obj = JSON.parse(stored);
+                return new Map(Object.entries(obj));
+            } catch {
+                return new Map();
+            }
+        }
+        return new Map();
+    });
+
     // Listen for color changes from other components
     useEffect(() => {
-        const handleColorChange = () => {
+        const handleStreamColorChange = () => {
             const stored = localStorage.getItem("streamColors");
             if (stored) {
                 try {
@@ -99,8 +113,23 @@ export function GraphPage({ data }: GraphPageProps) {
                 }
             }
         };
-        window.addEventListener("streamColorsChanged", handleColorChange);
-        return () => window.removeEventListener("streamColorsChanged", handleColorChange);
+        const handleTaskColorChange = () => {
+            const stored = localStorage.getItem("taskColors");
+            if (stored) {
+                try {
+                    const obj = JSON.parse(stored);
+                    setTaskColors(new Map(Object.entries(obj)));
+                } catch {
+                    // ignore
+                }
+            }
+        };
+        window.addEventListener("streamColorsChanged", handleStreamColorChange);
+        window.addEventListener("taskColorsChanged", handleTaskColorChange);
+        return () => {
+            window.removeEventListener("streamColorsChanged", handleStreamColorChange);
+            window.removeEventListener("taskColorsChanged", handleTaskColorChange);
+        };
     }, []);
 
     const computedTasks = useMemo(() => computeTaskDates(data.tasks, start), [data.tasks, start]);
@@ -387,10 +416,10 @@ export function GraphPage({ data }: GraphPageProps) {
                             })}
 
                             {/* Costs - stacked */}
-                            {computedTasks.map((task, idx) => {
+                            {computedTasks.map((task) => {
                                 const costId = `cost_${task.id}`;
                                 if (!visibleCosts.has(costId)) return null;
-                                const color = `hsl(0, 70%, ${45 + (idx % 3) * 10}%)`;
+                                const color = taskColors.get(task.id) || "#3b82f6";
                                 return (
                                     <Area
                                         key={task.id}

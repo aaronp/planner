@@ -51,21 +51,26 @@ export function TablePage({ data, month }: TablePageProps) {
     // Listen to storage events to reload colors when they change
     React.useEffect(() => {
         const handleStorage = (e: StorageEvent) => {
-            if (e.key === "streamColors") {
+            if (e.key === "streamColors" || e.key === "taskColors") {
                 setStorageVersion((v) => v + 1);
             }
         };
         window.addEventListener("storage", handleStorage);
 
         // Also listen for custom event from same window (storage event doesn't fire in same window)
-        const handleCustomStorage = () => {
+        const handleCustomStreamColors = () => {
             setStorageVersion((v) => v + 1);
         };
-        window.addEventListener("streamColorsChanged", handleCustomStorage);
+        const handleCustomTaskColors = () => {
+            setStorageVersion((v) => v + 1);
+        };
+        window.addEventListener("streamColorsChanged", handleCustomStreamColors);
+        window.addEventListener("taskColorsChanged", handleCustomTaskColors);
 
         return () => {
             window.removeEventListener("storage", handleStorage);
-            window.removeEventListener("streamColorsChanged", handleCustomStorage);
+            window.removeEventListener("streamColorsChanged", handleCustomStreamColors);
+            window.removeEventListener("taskColorsChanged", handleCustomTaskColors);
         };
     }, []);
 
@@ -81,6 +86,18 @@ export function TablePage({ data, month }: TablePageProps) {
         }
     }, [data.revenueStreams, storageVersion]);
 
+    // Load task colors from localStorage - reactive to storage changes
+    const taskColors = useMemo(() => {
+        const stored = localStorage.getItem("taskColors");
+        if (!stored) return new Map<string, string>();
+        try {
+            const obj = JSON.parse(stored);
+            return new Map<string, string>(Object.entries(obj));
+        } catch {
+            return new Map<string, string>();
+        }
+    }, [data.tasks, storageVersion]);
+
     return (
         <Card className="rounded-2xl shadow-sm">
             <CardHeader>
@@ -95,7 +112,12 @@ export function TablePage({ data, month }: TablePageProps) {
                         <thead className="sticky top-0 bg-background z-10">
                             {/* Group header row */}
                             <tr className="border-b">
-                                <th className="text-left p-2 font-medium text-muted-foreground sticky left-0 bg-background z-20" rowSpan={2}>
+                                {data.phases && data.phases.length > 0 && (
+                                    <th className="text-left p-2 font-medium text-muted-foreground sticky left-0 bg-background z-20" rowSpan={2}>
+                                        Phase
+                                    </th>
+                                )}
+                                <th className="text-left p-2 font-medium text-muted-foreground bg-background z-10" rowSpan={2} style={data.phases && data.phases.length > 0 ? { position: "sticky", left: "80px", zIndex: 19 } : { position: "sticky", left: "0", zIndex: 20 }}>
                                     Month
                                 </th>
                                 {(data.revenueStreams?.length ?? 0) > 0 && (
@@ -180,20 +202,23 @@ export function TablePage({ data, month }: TablePageProps) {
                                         <div className="text-xs">Net Revenue</div>
                                     </th>
                                 )}
-                                {!costsCollapsed && computedTasks.map((task) => (
-                                    <th
-                                        key={task.id}
-                                        className="text-center p-2 font-medium border-l"
-                                        style={{
-                                            backgroundColor: "hsl(0, 70%, 95%)",
-                                            borderLeftColor: "hsl(0, 70%, 60%)",
-                                            borderLeftWidth: "3px",
-                                        }}
-                                    >
-                                        <div className="text-xs">{task.name}</div>
-                                        <div className="text-xs font-normal text-muted-foreground mt-1">Cost</div>
-                                    </th>
-                                ))}
+                                {!costsCollapsed && computedTasks.map((task) => {
+                                    const taskColor = taskColors.get(task.id) || "#3b82f6";
+                                    return (
+                                        <th
+                                            key={task.id}
+                                            className="text-center p-2 font-medium border-l"
+                                            style={{
+                                                backgroundColor: `${taskColor}20`,
+                                                borderLeftColor: taskColor,
+                                                borderLeftWidth: "3px",
+                                            }}
+                                        >
+                                            <div className="text-xs">{task.name}</div>
+                                            <div className="text-xs font-normal text-muted-foreground mt-1">Cost</div>
+                                        </th>
+                                    );
+                                })}
                                 {!costsCollapsed && (data.costModel?.fixedMonthlyCosts ?? []).map((fixedCost) => (
                                     <th
                                         key={fixedCost.id}
@@ -241,18 +266,130 @@ export function TablePage({ data, month }: TablePageProps) {
                             </tr>
                         </thead>
                         <tbody>
-                            {series.map((row, idx) => {
-                                const isCurrentMonth = idx === month;
+                            {(() => {
+                                const phases = data.phases ?? [];
+                                const hasPhases = phases.length > 0;
 
-                                return (
-                                    <React.Fragment key={idx}>
-                                        {/* Main row with margin values */}
-                                        <tr
-                                            className={`border-b ${
-                                                isCurrentMonth ? "bg-muted/60 font-medium" : "hover:bg-muted/30"
-                                            } transition-colors`}
-                                        >
-                                            <td className="p-2 sticky left-0 bg-inherit z-10 text-xs">{row.label}</td>
+                                // Helper to get phase for a month
+                                const getPhaseForMonth = (monthIdx: number) => {
+                                    if (!hasPhases) return null;
+                                    let currentMonth = 0;
+                                    for (let i = 0; i < phases.length; i++) {
+                                        const phase = phases[i]!;
+                                        const match = phase.duration.match(/^(\d+)([dwmy])$/);
+                                        let durationMonths = 0;
+                                        if (match) {
+                                            const value = parseInt(match[1]!, 10);
+                                            const unit = match[2]!;
+                                            if (unit === "d") durationMonths = value / 30;
+                                            else if (unit === "w") durationMonths = value / 4;
+                                            else if (unit === "m") durationMonths = value;
+                                            else if (unit === "y") durationMonths = value * 12;
+                                        } else {
+                                            // Endless phase - extends to horizon
+                                            durationMonths = data.meta.horizonMonths - currentMonth;
+                                        }
+                                        if (monthIdx >= currentMonth && monthIdx < currentMonth + durationMonths) {
+                                            return { phase, index: i, startMonth: currentMonth, endMonth: currentMonth + durationMonths };
+                                        }
+                                        currentMonth += durationMonths;
+                                    }
+                                    return null;
+                                };
+
+                                const rows: JSX.Element[] = [];
+                                let currentPhaseIndex = -1;
+                                let phaseStartIdx = 0;
+
+                                // Phase accumulators
+                                let phaseRevenue = 0;
+                                let phaseCosts = 0;
+                                let phaseProfit = 0;
+
+                                series.forEach((row, idx) => {
+                                    const isCurrentMonth = idx === month;
+                                    const phaseInfo = getPhaseForMonth(idx);
+                                    const phaseIndex = phaseInfo?.index ?? -1;
+
+                                    // Check if we've moved to a new phase
+                                    if (hasPhases && phaseIndex !== currentPhaseIndex) {
+                                        // Add summary row for previous phase (if exists)
+                                        if (currentPhaseIndex >= 0) {
+                                            rows.push(
+                                                <tr key={`summary-${currentPhaseIndex}`} className="border-b-2 bg-muted/50 font-bold">
+                                                    {hasPhases && <td className="p-2 sticky left-0 bg-inherit z-10 text-xs"></td>}
+                                                    <td className="p-2 text-xs" style={hasPhases ? { position: "sticky", left: "80px", zIndex: 9 } : { position: "sticky", left: "0", zIndex: 10 }}>Phase Total</td>
+                                                    {/* Skip individual revenue/cost columns in summary */}
+                                                    {!revenueCollapsed && data.revenueStreams && data.revenueStreams.map(() => (
+                                                        <td key={Math.random()} className="border-l"></td>
+                                                    ))}
+                                                    {revenueCollapsed && (data.revenueStreams?.length ?? 0) > 0 && <td className="border-l"></td>}
+                                                    {!costsCollapsed && computedTasks.map(() => (
+                                                        <td key={Math.random()} className="border-l"></td>
+                                                    ))}
+                                                    {!costsCollapsed && (data.costModel?.fixedMonthlyCosts ?? []).map(() => (
+                                                        <td key={Math.random()} className="border-l"></td>
+                                                    ))}
+                                                    {costsCollapsed && (computedTasks.length + (data.costModel?.fixedMonthlyCosts?.length ?? 0)) > 0 && <td className="border-l"></td>}
+                                                    {!totalsCollapsed && (
+                                                        <>
+                                                            {!revenueCollapsed && (
+                                                                <td className="text-right p-2 border-l text-xs">
+                                                                    {fmtCurrency(phaseRevenue, currency)}
+                                                                </td>
+                                                            )}
+                                                            {!costsCollapsed && (
+                                                                <td className="text-right p-2 border-l text-xs">
+                                                                    {fmtCurrency(phaseCosts, currency)}
+                                                                </td>
+                                                            )}
+                                                            <td className="text-right p-2 border-l text-xs">
+                                                                {fmtCurrency(phaseProfit, currency)}
+                                                            </td>
+                                                            <td className="text-right p-2 border-l text-xs"></td>
+                                                            <td className="text-right p-2 border-l text-xs"></td>
+                                                        </>
+                                                    )}
+                                                    {totalsCollapsed && <td className="border-l"></td>}
+                                                </tr>
+                                            );
+                                        }
+
+                                        // Reset phase accumulation
+                                        currentPhaseIndex = phaseIndex;
+                                        phaseStartIdx = idx;
+                                        phaseRevenue = 0;
+                                        phaseCosts = 0;
+                                        phaseProfit = 0;
+                                    }
+
+                                    // Accumulate phase totals
+                                    phaseRevenue += row.revenue;
+                                    phaseCosts += row.costs;
+                                    phaseProfit += row.profit;
+
+                                    // Render the main row
+                                    rows.push(
+                                        <React.Fragment key={idx}>
+                                            {/* Main row with margin values */}
+                                            <tr
+                                                className={`border-b ${
+                                                    isCurrentMonth ? "bg-muted/60 font-medium" : "hover:bg-muted/30"
+                                                } transition-colors`}
+                                            >
+                                                {hasPhases && idx === phaseStartIdx && (
+                                                    <td
+                                                        className="p-2 text-xs font-medium text-center sticky left-0 bg-inherit z-10"
+                                                        style={{
+                                                            backgroundColor: `${phaseInfo?.phase.color}15`,
+                                                            color: phaseInfo?.phase.color,
+                                                        }}
+                                                        rowSpan={Math.ceil((phaseInfo?.endMonth ?? 0) - (phaseInfo?.startMonth ?? 0))}
+                                                    >
+                                                        {phaseInfo?.phase.name}
+                                                    </td>
+                                                )}
+                                                <td className="p-2 bg-inherit z-10 text-xs" style={hasPhases ? { position: "sticky", left: "80px", zIndex: 9 } : { position: "sticky", left: "0", zIndex: 10 }}>{row.label}</td>
                                             {!revenueCollapsed && data.revenueStreams &&
                                                 data.revenueStreams.map((stream) => {
                                                     const streamColor = streamColors.get(stream.id) || "#4f46e5";
@@ -374,14 +511,15 @@ export function TablePage({ data, month }: TablePageProps) {
                                                 const isExpanded = expandedCells.has(cellKey);
                                                 const taskMultiplier = multipliers.tasks[task.id] ?? 1;
                                                 const { oneOff, monthly, total } = taskCostAtMonth(task, idx, start, taskMultiplier);
+                                                const taskColor = taskColors.get(task.id) || "#3b82f6";
 
                                                 return (
                                                     <td
                                                         key={task.id}
                                                         className="text-center p-0 border-l cursor-pointer"
                                                         style={{
-                                                            backgroundColor: "hsl(0, 70%, 97%)",
-                                                            borderLeftColor: "hsl(0, 70%, 85%)",
+                                                            backgroundColor: `${taskColor}15`,
+                                                            borderLeftColor: `${taskColor}55`,
                                                         }}
                                                         onClick={() => {
                                                             const newSet = new Set(expandedCells);
@@ -681,7 +819,52 @@ export function TablePage({ data, month }: TablePageProps) {
                                         </tr>
                                     </React.Fragment>
                                 );
-                            })}
+
+                                    // Add summary row for last phase if this is the last row
+                                    if (idx === series.length - 1 && hasPhases && currentPhaseIndex >= 0) {
+                                        rows.push(
+                                            <tr key={`summary-${currentPhaseIndex}`} className="border-b-2 bg-muted/50 font-bold">
+                                                {hasPhases && <td className="p-2 sticky left-0 bg-inherit z-10 text-xs"></td>}
+                                                <td className="p-2 text-xs" style={hasPhases ? { position: "sticky", left: "80px", zIndex: 9 } : { position: "sticky", left: "0", zIndex: 10 }}>Phase Total</td>
+                                                {/* Skip individual revenue/cost columns in summary */}
+                                                {!revenueCollapsed && data.revenueStreams && data.revenueStreams.map(() => (
+                                                    <td key={Math.random()} className="border-l"></td>
+                                                ))}
+                                                {revenueCollapsed && (data.revenueStreams?.length ?? 0) > 0 && <td className="border-l"></td>}
+                                                {!costsCollapsed && computedTasks.map(() => (
+                                                    <td key={Math.random()} className="border-l"></td>
+                                                ))}
+                                                {!costsCollapsed && (data.costModel?.fixedMonthlyCosts ?? []).map(() => (
+                                                    <td key={Math.random()} className="border-l"></td>
+                                                ))}
+                                                {costsCollapsed && (computedTasks.length + (data.costModel?.fixedMonthlyCosts?.length ?? 0)) > 0 && <td className="border-l"></td>}
+                                                {!totalsCollapsed && (
+                                                    <>
+                                                        {!revenueCollapsed && (
+                                                            <td className="text-right p-2 border-l text-xs">
+                                                                {fmtCurrency(phaseRevenue, currency)}
+                                                            </td>
+                                                        )}
+                                                        {!costsCollapsed && (
+                                                            <td className="text-right p-2 border-l text-xs">
+                                                                {fmtCurrency(phaseCosts, currency)}
+                                                            </td>
+                                                        )}
+                                                        <td className="text-right p-2 border-l text-xs">
+                                                            {fmtCurrency(phaseProfit, currency)}
+                                                        </td>
+                                                        <td className="text-right p-2 border-l text-xs"></td>
+                                                        <td className="text-right p-2 border-l text-xs"></td>
+                                                    </>
+                                                )}
+                                                {totalsCollapsed && <td className="border-l"></td>}
+                                            </tr>
+                                        );
+                                    }
+                                });
+
+                                return rows;
+                            })()}
                         </tbody>
                     </table>
                 </div>

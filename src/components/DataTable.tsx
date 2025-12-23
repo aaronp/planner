@@ -1,8 +1,8 @@
-import React from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, GripVertical } from "lucide-react";
 import type { Col } from "../types";
 
 export function DataTable<T extends { id: string }>(props: {
@@ -13,6 +13,8 @@ export function DataTable<T extends { id: string }>(props: {
     addRow: () => T;
 }) {
     const { title, rows, setRows, columns, addRow } = props;
+    const [hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
+    const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
     return (
         <Card className="rounded-2xl shadow-sm">
@@ -30,6 +32,7 @@ export function DataTable<T extends { id: string }>(props: {
                     <table className="w-full text-sm">
                         <thead className="sticky top-0 bg-background">
                             <tr className="border-b">
+                                <th className="p-2 w-[40px]" />
                                 {columns.map((c) => (
                                     <th key={String(c.key)} className="text-left font-medium p-2" style={{ width: c.width }}>
                                         {c.header}
@@ -40,7 +43,63 @@ export function DataTable<T extends { id: string }>(props: {
                         </thead>
                         <tbody>
                             {rows.map((r, idx) => (
-                                <tr key={r.id} className="border-b last:border-b-0 hover:bg-muted/40">
+                                <tr
+                                    key={r.id}
+                                    className={`border-b last:border-b-0 hover:bg-muted/40 ${
+                                        draggedIndex === idx ? "opacity-50" : ""
+                                    }`}
+                                    onMouseEnter={() => setHoveredRowIndex(idx)}
+                                    onMouseLeave={() => setHoveredRowIndex(null)}
+                                    onDragOver={(e) => {
+                                        e.preventDefault();
+                                        e.dataTransfer.dropEffect = "move";
+                                    }}
+                                    onDrop={(e) => {
+                                        e.preventDefault();
+                                        if (draggedIndex === null || draggedIndex === idx) return;
+
+                                        const newRows = [...rows];
+                                        const [draggedRow] = newRows.splice(draggedIndex, 1);
+                                        newRows.splice(idx, 0, draggedRow!);
+                                        setRows(newRows);
+                                        setDraggedIndex(null);
+                                    }}
+                                >
+                                    {/* Drag handle and insert button column - appears on hover */}
+                                    <td className="p-0 align-top relative">
+                                        {hoveredRowIndex === idx && (
+                                            <div className="absolute left-0 top-0 flex items-center gap-0.5 bg-background p-1 shadow-sm rounded-r-lg border border-l-0 z-10">
+                                                <div
+                                                    className="rounded-lg h-6 w-6 p-0 cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-muted transition-colors"
+                                                    title="Drag to reorder"
+                                                    draggable
+                                                    onDragStart={(e) => {
+                                                        setDraggedIndex(idx);
+                                                        e.dataTransfer.effectAllowed = "move";
+                                                    }}
+                                                    onDragEnd={() => {
+                                                        setDraggedIndex(null);
+                                                    }}
+                                                >
+                                                    <GripVertical className="h-3 w-3 text-muted-foreground" />
+                                                </div>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="rounded-lg h-6 w-6 p-0"
+                                                    onClick={() => {
+                                                        const newRow = addRow();
+                                                        const newRows = [...rows];
+                                                        newRows.splice(idx + 1, 0, newRow);
+                                                        setRows(newRows);
+                                                    }}
+                                                    title="Insert row below"
+                                                >
+                                                    <Plus className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </td>
                                     {columns.map((c) => {
                                         const val = (r as any)[c.key];
                                         const inputType = c.input ?? "text";
@@ -81,7 +140,7 @@ export function DataTable<T extends { id: string }>(props: {
                             ))}
                             {rows.length === 0 && (
                                 <tr>
-                                    <td colSpan={columns.length + 1} className="p-6 text-center text-muted-foreground">
+                                    <td colSpan={columns.length + 2} className="p-6 text-center text-muted-foreground">
                                         No rows yet.
                                     </td>
                                 </tr>
