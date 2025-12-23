@@ -109,15 +109,15 @@ export function TablePage({ data, month }: TablePageProps) {
             <CardContent>
                 <div className="overflow-auto max-h-[calc(100vh-300px)]">
                     <table className="w-full text-sm border-collapse">
-                        <thead className="sticky top-0 bg-background z-10">
+                        <thead className="sticky top-0 bg-card z-10 border-b">
                             {/* Group header row */}
                             <tr className="border-b">
                                 {data.phases && data.phases.length > 0 && (
-                                    <th className="text-left p-2 font-medium text-muted-foreground sticky left-0 bg-background z-20" rowSpan={2}>
+                                    <th className="text-left p-2 font-medium text-foreground sticky left-0 bg-card z-20" rowSpan={2}>
                                         Phase
                                     </th>
                                 )}
-                                <th className="text-left p-2 font-medium text-muted-foreground bg-background z-10" rowSpan={2} style={data.phases && data.phases.length > 0 ? { position: "sticky", left: "80px", zIndex: 19 } : { position: "sticky", left: "0", zIndex: 20 }}>
+                                <th className="text-left p-2 font-medium text-foreground bg-card z-10" rowSpan={2} style={data.phases && data.phases.length > 0 ? { position: "sticky", left: "80px", zIndex: 19 } : { position: "sticky", left: "0", zIndex: 20 }}>
                                     Month
                                 </th>
                                 {(data.revenueStreams?.length ?? 0) > 0 && (
@@ -132,7 +132,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                         onClick={() => setRevenueCollapsed(!revenueCollapsed)}
                                         title="Click to collapse/expand revenue columns"
                                     >
-                                        <div className="text-xs">
+                                        <div className="text-xs text-foreground">
                                             Revenue {revenueCollapsed ? "▸" : "▾"}
                                         </div>
                                     </th>
@@ -149,7 +149,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                         onClick={() => setCostsCollapsed(!costsCollapsed)}
                                         title="Click to collapse/expand cost columns"
                                     >
-                                        <div className="text-xs">
+                                        <div className="text-xs text-foreground">
                                             Costs {costsCollapsed ? "▸" : "▾"}
                                         </div>
                                     </th>
@@ -165,7 +165,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                     onClick={() => setTotalsCollapsed(!totalsCollapsed)}
                                     title="Click to collapse/expand totals columns"
                                 >
-                                    <div className="text-xs">
+                                    <div className="text-xs text-foreground">
                                         Totals {totalsCollapsed ? "▸" : "▾"}
                                     </div>
                                 </th>
@@ -185,7 +185,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                     borderLeftWidth: "3px",
                                                 }}
                                             >
-                                                <div className="text-xs">{stream.name}</div>
+                                                <div className="text-xs text-foreground">{stream.name}</div>
                                                 <div className="text-xs font-normal text-muted-foreground mt-1">Margin</div>
                                             </th>
                                         );
@@ -199,7 +199,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                             borderLeftWidth: "3px",
                                         }}
                                     >
-                                        <div className="text-xs">Net Revenue</div>
+                                        <div className="text-xs text-foreground">Net Revenue</div>
                                     </th>
                                 )}
                                 {!costsCollapsed && computedTasks.map((task) => {
@@ -214,7 +214,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                 borderLeftWidth: "3px",
                                             }}
                                         >
-                                            <div className="text-xs">{task.name}</div>
+                                            <div className="text-xs text-foreground">{task.name}</div>
                                             <div className="text-xs font-normal text-muted-foreground mt-1">Cost</div>
                                         </th>
                                     );
@@ -229,7 +229,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                             borderLeftWidth: "3px",
                                         }}
                                     >
-                                        <div className="text-xs">{fixedCost.name}</div>
+                                        <div className="text-xs text-foreground">{fixedCost.name}</div>
                                         <div className="text-xs font-normal text-muted-foreground mt-1">Fixed Cost</div>
                                     </th>
                                 ))}
@@ -242,16 +242,16 @@ export function TablePage({ data, month }: TablePageProps) {
                                             borderLeftWidth: "3px",
                                         }}
                                     >
-                                        <div className="text-xs">Total Costs</div>
+                                        <div className="text-xs text-foreground">Total Costs</div>
                                     </th>
                                 )}
                                 {!totalsCollapsed && (
                                     <>
-                                        {!revenueCollapsed && <th className="text-right p-2 font-medium text-muted-foreground border-l">Net Revenue</th>}
-                                        {!costsCollapsed && <th className="text-right p-2 font-medium text-muted-foreground border-l">Total Costs</th>}
-                                        <th className="text-right p-2 font-medium text-muted-foreground border-l">Margin</th>
-                                        <th className="text-right p-2 font-medium text-muted-foreground border-l">Cumulative Profit</th>
-                                        <th className="text-right p-2 font-medium text-muted-foreground border-l">Balance</th>
+                                        {!revenueCollapsed && <th className="text-right p-2 font-medium text-foreground border-l bg-card">Net Revenue</th>}
+                                        {!costsCollapsed && <th className="text-right p-2 font-medium text-foreground border-l bg-card">Total Costs</th>}
+                                        <th className="text-right p-2 font-medium text-foreground border-l bg-card">Margin</th>
+                                        <th className="text-right p-2 font-medium text-foreground border-l bg-card">Cumulative Profit</th>
+                                        <th className="text-right p-2 font-medium text-foreground border-l bg-card">Balance</th>
                                     </>
                                 )}
                                 {totalsCollapsed && (
@@ -260,7 +260,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                         borderLeftColor: "hsl(220, 70%, 60%)",
                                         borderLeftWidth: "3px",
                                     }}>
-                                        <div className="text-xs">Balance</div>
+                                        <div className="text-xs text-foreground">Balance</div>
                                     </th>
                                 )}
                             </tr>
