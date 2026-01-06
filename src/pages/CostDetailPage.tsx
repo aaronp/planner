@@ -507,7 +507,9 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
                             <div className="flex items-center gap-2 min-w-0 flex-1">
                                 <div className="h-3 w-3 rounded-full" style={{ background: "#3b82f6" }} />
                                 <div className="truncate text-sm font-medium">{task.name}</div>
-                                <Badge variant="outline">M{taskStartMonth}</Badge>
+                                <Badge variant="outline" title={task.name}>
+                                    {task.id}
+                                </Badge>
                                 {task.duration && (
                                     <Badge variant="secondary" className="text-xs">
                                         {task.duration}
@@ -539,7 +541,12 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
                 <CardHeader>
                     <div className="flex items-center justify-between">
                         <div>
-                            <CardTitle className="text-lg">Count Schedule</CardTitle>
+                            <CardTitle
+                                className="text-lg"
+                                title="Schedule resource level changes throughout the project lifecycle"
+                            >
+                                Count Schedule
+                            </CardTitle>
                             <p className="text-sm text-muted-foreground mt-1">
                                 Adjust headcount/resource count at different points in time
                             </p>
@@ -552,14 +559,7 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
                 </CardHeader>
                 <CardContent>
                     {sortedSchedule.length === 0 ? (
-                        <div className="text-center py-8">
-                            <p className="text-muted-foreground mb-4">
-                                No schedule points defined. Count will remain at {task.count ?? 1} throughout.
-                            </p>
-                            <Button onClick={handleAddSchedulePoint} variant="outline" className="rounded-2xl">
-                                <Plus className="h-4 w-4 mr-2" />
-                                Add Your First Schedule Point
-                            </Button>
+                        <div className="space-y-4">
                         </div>
                     ) : (
                         <div className="space-y-4">
@@ -685,11 +685,11 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
                                                             value={relativeInput}
                                                             onChange={(e) => handleRelativeChange(e.target.value)}
                                                             className={`rounded-xl font-mono text-sm ${
-                                                                relativeError ? "border-red-500 bg-red-50" : ""
+                                                                relativeError ? "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700" : ""
                                                             }`}
                                                         />
                                                         {relativeError && (
-                                                            <div className="text-xs text-red-600 mt-1">{relativeError}</div>
+                                                            <div className="text-xs text-red-600 dark:text-red-400 mt-1">{relativeError}</div>
                                                         )}
                                                     </div>
                                                 )}

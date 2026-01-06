@@ -269,7 +269,9 @@ function DraggableTaskTimeline({
                                     >
                                         <div className="h-3 w-3 rounded-full" style={{ background: color }} />
                                         <div className="truncate text-sm font-medium">{t.name}</div>
-                                        <Badge variant="outline">M{month}</Badge>
+                                        <Badge variant="outline" title={t.name}>
+                                            {t.id}
+                                        </Badge>
                                         {t.duration && (
                                             <Badge variant="secondary" className="text-xs">
                                                 {t.duration}
@@ -678,7 +680,7 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                         return (
                                             <div>
                                                 <Input
-                                                    className={`h-8 rounded-xl ${!isValid ? "bg-red-50 border-red-300" : ""}`}
+                                                    className={`h-8 rounded-xl ${!isValid ? "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700" : ""}`}
                                                     value={v || ""}
                                                     placeholder="e.g., 2w, 3m (empty = ongoing)"
                                                     title={!isValid ? "Invalid format. Use: 2w, 3m, 1y, 5d" : ""}
@@ -687,7 +689,7 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                                     }}
                                                 />
                                                 {!isValid && v && (
-                                                    <div className="text-xs text-red-600 mt-1">Invalid format</div>
+                                                    <div className="text-xs text-red-600 dark:text-red-400 mt-1">Invalid format</div>
                                                 )}
                                             </div>
                                         );
@@ -739,7 +741,7 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                         return (
                                             <div>
                                                 <Input
-                                                    className={`h-8 rounded-xl ${!allValid ? "bg-red-50 border-red-300" : ""}`}
+                                                    className={`h-8 rounded-xl ${!allValid ? "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700" : ""}`}
                                                     value={depString}
                                                     placeholder="e.g., T1, T1e+2w, T2s+3d, T3-1m"
                                                     title={!allValid ? "Invalid dependency format" : "Use: T1 (end), T1s (start), T1+2w (offset), T3-1m (before)"}
@@ -764,7 +766,7 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                                     }}
                                                 />
                                                 {!allValid && (
-                                                    <div className="text-xs text-red-600 mt-1">Invalid dependency format</div>
+                                                    <div className="text-xs text-red-600 dark:text-red-400 mt-1">Invalid dependency format</div>
                                                 )}
                                             </div>
                                         );
