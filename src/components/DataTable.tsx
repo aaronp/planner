@@ -11,8 +11,10 @@ export function DataTable<T extends { id: string }>(props: {
     setRows: (rows: T[]) => void;
     columns: Col<T>[];
     addRow: () => T;
+    highlightedRowId?: string;
+    onRowClick?: (id: string) => void;
 }) {
-    const { title, rows, setRows, columns, addRow } = props;
+    const { title, rows, setRows, columns, addRow, highlightedRowId, onRowClick } = props;
     const [hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
@@ -32,14 +34,17 @@ export function DataTable<T extends { id: string }>(props: {
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map((r, idx) => (
+                            {rows.map((r, idx) => {
+                                const isHighlighted = highlightedRowId === r.id;
+                                return (
                                 <tr
                                     key={r.id}
-                                    className={`border-b last:border-b-0 hover:bg-muted/40 ${
+                                    className={`border-b last:border-b-0 hover:bg-muted/40 transition-colors ${
                                         draggedIndex === idx ? "opacity-50" : ""
-                                    }`}
+                                    } ${isHighlighted ? "bg-primary/10 ring-2 ring-primary/50 ring-inset" : ""} ${onRowClick ? "cursor-pointer" : ""}`}
                                     onMouseEnter={() => setHoveredRowIndex(idx)}
                                     onMouseLeave={() => setHoveredRowIndex(null)}
+                                    onClick={() => onRowClick?.(r.id)}
                                     onDragOver={(e) => {
                                         e.preventDefault();
                                         e.dataTransfer.dropEffect = "move";
@@ -130,7 +135,8 @@ export function DataTable<T extends { id: string }>(props: {
                                         </Button>
                                     </td>
                                 </tr>
-                            ))}
+                            );
+                            })}
                             {rows.length === 0 && (
                                 <tr>
                                     <td colSpan={columns.length + 2} className="p-6 text-center text-muted-foreground">

@@ -270,11 +270,6 @@ function DraggableTaskTimeline({
                                         <div className="h-3 w-3 rounded-full" style={{ background: color }} />
                                         <div className="truncate text-sm font-medium">{t.name}</div>
                                         <Badge variant="outline">M{month}</Badge>
-                                        {hasDeps && (
-                                            <Badge variant="secondary" className="text-xs">
-                                                Deps
-                                            </Badge>
-                                        )}
                                         {t.duration && (
                                             <Badge variant="secondary" className="text-xs">
                                                 {t.duration}
@@ -600,6 +595,8 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                             title=""
                             rows={data.tasks}
                             setRows={setTasks}
+                            highlightedRowId={selectedTaskId ?? undefined}
+                            onRowClick={(id) => setSelectedTaskId(id)}
                             addRow={() => {
                                 const newId = getNextTaskId();
                                 const palette = ["#ef4444", "#f97316", "#f59e0b", "#10b981", "#3b82f6", "#6366f1", "#8b5cf6"];
@@ -736,7 +733,7 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                     header: "Depends on (e.g., T1e+2w, T3-1m)",
                                     width: "260px",
                                     render: (v, row) => {
-                                        const deps = Array.isArray(v) ? v : [];
+                                        const deps = Array.isArray(v) ? v.filter(d => d && d.trim()) : [];
                                         const allValid = deps.length === 0 || deps.every((d) => isValidDependency(d));
                                         const depString = deps.join(",");
                                         return (
@@ -766,7 +763,7 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                                         }
                                                     }}
                                                 />
-                                                {!allValid && deps.length > 0 && (
+                                                {!allValid && (
                                                     <div className="text-xs text-red-600 mt-1">Invalid dependency format</div>
                                                 )}
                                             </div>

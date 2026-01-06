@@ -13,6 +13,7 @@ import {
 } from "../utils/logic";
 import { calculateTotalCosts, calculateTotalMargin, type FormulaComponent } from "../utils/formulas";
 import { useRisk } from "../contexts/RiskContext";
+import { useTheme } from "../contexts/ThemeContext";
 
 type TablePageProps = {
     data: VentureData;
@@ -21,7 +22,19 @@ type TablePageProps = {
 
 export function TablePage({ data, month }: TablePageProps) {
     const { multipliers, streamDistributions, distributionSelection } = useRisk();
+    const { actualTheme } = useTheme();
     const { start, currency } = data.meta;
+    const isDark = actualTheme === "dark";
+
+    // Helper function to adjust color opacity based on theme
+    const getBgOpacity = (hexColor: string, lightOpacity: string = "20", darkOpacity: string = "30") => {
+        return `${hexColor}${isDark ? darkOpacity : lightOpacity}`;
+    };
+
+    // Helper function to get HSL color with theme-adjusted lightness
+    const getHslColor = (h: number, s: number, lightL: number, darkL: number) => {
+        return `hsl(${h}, ${s}%, ${isDark ? darkL : lightL}%)`;
+    };
     // Track expanded cells by "streamId:monthIndex" key
     const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
     // Track localStorage version to force reload when colors change
@@ -125,7 +138,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                         colSpan={revenueCollapsed ? 1 : data.revenueStreams!.length}
                                         className="text-center p-2 font-medium border-l cursor-pointer hover:bg-muted/50 transition-colors"
                                         style={{
-                                            backgroundColor: "hsl(142, 70%, 95%)",
+                                            backgroundColor: getHslColor(142, 70, 95, 25),
                                             borderLeftColor: "hsl(142, 70%, 60%)",
                                             borderLeftWidth: "3px",
                                         }}
@@ -142,7 +155,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                         colSpan={costsCollapsed ? 1 : computedTasks.length + (data.costModel?.fixedMonthlyCosts?.length ?? 0)}
                                         className="text-center p-2 font-medium border-l cursor-pointer hover:bg-muted/50 transition-colors"
                                         style={{
-                                            backgroundColor: "hsl(0, 70%, 95%)",
+                                            backgroundColor: getHslColor(0, 70, 95, 25),
                                             borderLeftColor: "hsl(0, 70%, 60%)",
                                             borderLeftWidth: "3px",
                                         }}
@@ -158,7 +171,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                     colSpan={totalsCollapsed ? 1 : 5}
                                     className="text-center p-2 font-medium border-l cursor-pointer hover:bg-muted/50 transition-colors"
                                     style={{
-                                        backgroundColor: "hsl(220, 70%, 95%)",
+                                        backgroundColor: getHslColor(220, 70, 95, 25),
                                         borderLeftColor: "hsl(220, 70%, 60%)",
                                         borderLeftWidth: "3px",
                                     }}
@@ -180,7 +193,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                 key={stream.id}
                                                 className="text-center p-2 font-medium border-l"
                                                 style={{
-                                                    backgroundColor: `${streamColor}20`,
+                                                    backgroundColor: getBgOpacity(streamColor),
                                                     borderLeftColor: streamColor,
                                                     borderLeftWidth: "3px",
                                                 }}
@@ -194,7 +207,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                     <th
                                         className="text-center p-2 font-medium border-l"
                                         style={{
-                                            backgroundColor: "hsl(142, 70%, 95%)",
+                                            backgroundColor: getHslColor(142, 70, 95, 25),
                                             borderLeftColor: "hsl(142, 70%, 60%)",
                                             borderLeftWidth: "3px",
                                         }}
@@ -209,7 +222,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                             key={task.id}
                                             className="text-center p-2 font-medium border-l"
                                             style={{
-                                                backgroundColor: `${taskColor}20`,
+                                                backgroundColor: getBgOpacity(taskColor),
                                                 borderLeftColor: taskColor,
                                                 borderLeftWidth: "3px",
                                             }}
@@ -224,7 +237,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                         key={fixedCost.id}
                                         className="text-center p-2 font-medium border-l"
                                         style={{
-                                            backgroundColor: "hsl(280, 50%, 95%)",
+                                            backgroundColor: getHslColor(280, 50, 95, 25),
                                             borderLeftColor: "hsl(280, 50%, 60%)",
                                             borderLeftWidth: "3px",
                                         }}
@@ -237,7 +250,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                     <th
                                         className="text-center p-2 font-medium border-l"
                                         style={{
-                                            backgroundColor: "hsl(0, 70%, 95%)",
+                                            backgroundColor: getHslColor(0, 70, 95, 25),
                                             borderLeftColor: "hsl(0, 70%, 60%)",
                                             borderLeftWidth: "3px",
                                         }}
@@ -256,7 +269,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                 )}
                                 {totalsCollapsed && (
                                     <th className="text-right p-2 font-medium border-l" style={{
-                                        backgroundColor: "hsl(220, 70%, 95%)",
+                                        backgroundColor: getHslColor(220, 70, 95, 25),
                                         borderLeftColor: "hsl(220, 70%, 60%)",
                                         borderLeftWidth: "3px",
                                     }}>
@@ -412,7 +425,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                             key={stream.id}
                                                             className="text-center p-0 border-l cursor-pointer"
                                                             style={{
-                                                                backgroundColor: `${streamColor}10`,
+                                                                backgroundColor: getBgOpacity(streamColor, "10", "20"),
                                                                 borderLeftColor: `${streamColor}40`,
                                                             }}
                                                             onClick={() => {
@@ -488,7 +501,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                 <td
                                                     className="text-center p-2 border-l font-medium"
                                                     style={{
-                                                        backgroundColor: "hsl(142, 70%, 95%)",
+                                                        backgroundColor: getHslColor(142, 70, 95, 25),
                                                         borderLeftColor: "hsl(142, 70%, 60%)",
                                                         borderLeftWidth: "3px",
                                                     }}
@@ -518,7 +531,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                         key={task.id}
                                                         className="text-center p-0 border-l cursor-pointer"
                                                         style={{
-                                                            backgroundColor: `${taskColor}15`,
+                                                            backgroundColor: getBgOpacity(taskColor, "15", "25"),
                                                             borderLeftColor: `${taskColor}55`,
                                                         }}
                                                         onClick={() => {
@@ -582,7 +595,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                         key={fixedCost.id}
                                                         className="text-center p-0 border-l cursor-pointer"
                                                         style={{
-                                                            backgroundColor: "hsl(280, 50%, 97%)",
+                                                            backgroundColor: getHslColor(280, 50, 97, 20),
                                                             borderLeftColor: "hsl(280, 50%, 85%)",
                                                         }}
                                                         onClick={() => {
@@ -626,7 +639,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                 <td
                                                     className="text-center p-2 border-l font-medium"
                                                     style={{
-                                                        backgroundColor: "hsl(0, 70%, 95%)",
+                                                        backgroundColor: getHslColor(0, 70, 95, 25),
                                                         borderLeftColor: "hsl(0, 70%, 60%)",
                                                         borderLeftWidth: "3px",
                                                     }}
@@ -642,7 +655,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                         <td
                                                             className="text-right p-2 border-l font-medium"
                                                             style={{
-                                                                backgroundColor: "hsl(142, 70%, 97%)",
+                                                                backgroundColor: getHslColor(142, 70, 97, 20),
                                                             }}
                                                         >
                                                             <div className="text-xs">
@@ -654,7 +667,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                         <td
                                                 className="text-right p-0 border-l cursor-pointer font-medium"
                                                 style={{
-                                                    backgroundColor: "hsl(0, 0%, 98%)",
+                                                    backgroundColor: getHslColor(0, 0, 98, 15),
                                                 }}
                                                 onClick={() => {
                                                     const cellKey = `total-costs:${idx}`;
@@ -719,7 +732,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                             <td
                                                 className="text-right p-0 border-l cursor-pointer font-medium"
                                                 style={{
-                                                    backgroundColor: "hsl(0, 0%, 98%)",
+                                                    backgroundColor: getHslColor(0, 0, 98, 15),
                                                 }}
                                                 onClick={() => {
                                                     const cellKey = `total-margin:${idx}`;
@@ -783,7 +796,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                             <td
                                                 className="text-right p-2 border-l font-medium"
                                                 style={{
-                                                    backgroundColor: "hsl(142, 70%, 97%)",
+                                                    backgroundColor: getHslColor(142, 70, 97, 20),
                                                 }}
                                             >
                                                 <div className="text-xs whitespace-nowrap">
@@ -793,7 +806,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                             <td
                                                 className="text-right p-2 border-l font-medium"
                                                 style={{
-                                                    backgroundColor: "hsl(220, 70%, 97%)",
+                                                    backgroundColor: getHslColor(220, 70, 97, 20),
                                                 }}
                                             >
                                                 <div className="text-xs whitespace-nowrap">
@@ -806,7 +819,7 @@ export function TablePage({ data, month }: TablePageProps) {
                                                 <td
                                                     className="text-right p-2 border-l font-medium"
                                                     style={{
-                                                        backgroundColor: "hsl(220, 70%, 97%)",
+                                                        backgroundColor: getHslColor(220, 70, 97, 20),
                                                         borderLeftColor: "hsl(220, 70%, 60%)",
                                                         borderLeftWidth: "3px",
                                                     }}
