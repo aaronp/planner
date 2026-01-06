@@ -346,46 +346,44 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
                         </CardHeader>
                         <CardContent>
                             <Tabs defaultValue="overview" className="space-y-4">
-                                <div className="flex flex-col gap-2 border-b">
-                                    <div className="flex gap-6">
-                                        <TabsTrigger
-                                            value="overview"
-                                            className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2"
-                                        >
-                                            Overview
-                                        </TabsTrigger>
-                                        <TabsTrigger
-                                            value="pricing"
-                                            className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2"
-                                        >
-                                            Pricing
-                                        </TabsTrigger>
-                                        <TabsTrigger
-                                            value="growth"
-                                            className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2"
-                                        >
-                                            Growth
-                                        </TabsTrigger>
-                                        <TabsTrigger
-                                            value="costs"
-                                            className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2"
-                                        >
-                                            Costs
-                                        </TabsTrigger>
-                                        <TabsTrigger
-                                            value="assumptions"
-                                            className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2"
-                                        >
-                                            Assumptions
-                                        </TabsTrigger>
-                                        <TabsTrigger
-                                            value="risks"
-                                            className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2"
-                                        >
-                                            Risks
-                                        </TabsTrigger>
-                                    </div>
-                                </div>
+                                <TabsList className="h-auto w-auto bg-transparent border-b rounded-none p-0 gap-6">
+                                    <TabsTrigger
+                                        value="overview"
+                                        className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2 shadow-none"
+                                    >
+                                        Overview
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="pricing"
+                                        className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2 shadow-none"
+                                    >
+                                        Pricing
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="growth"
+                                        className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2 shadow-none"
+                                    >
+                                        Growth
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="costs"
+                                        className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2 shadow-none"
+                                    >
+                                        Costs
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="assumptions"
+                                        className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2 shadow-none"
+                                    >
+                                        Assumptions
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="risks"
+                                        className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2 shadow-none"
+                                    >
+                                        Risks
+                                    </TabsTrigger>
+                                </TabsList>
 
                 {/* Overview Tab */}
                 <TabsContent value="overview">
@@ -490,41 +488,79 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
                             />
 
                             <div>
-                                <Label>Billing Frequency</Label>
-                                <Select
-                                    value={stream.unitEconomics.billingFrequency}
-                                    onValueChange={(v) =>
+                                <Label>Revenue Frequency (months)</Label>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    value={(() => {
+                                        // Get the contract length from the distribution (mode value)
+                                        const contractLength = stream.unitEconomics.contractLengthMonths;
+                                        if (contractLength && contractLength.type === "triangular" && contractLength.mode !== undefined) {
+                                            return Math.round(contractLength.mode);
+                                        }
+                                        // Fallback: if billingFrequency is monthly, default to 1, otherwise 12
+                                        return stream.unitEconomics.billingFrequency === "monthly" ? 1 : 12;
+                                    })()}
+                                    onChange={(e) => {
+                                        const months = Math.max(1, parseInt(e.target.value) || 1);
                                         updateStream({
                                             unitEconomics: {
                                                 ...stream.unitEconomics,
-                                                billingFrequency: v as "monthly" | "annual",
+                                                billingFrequency: months === 1 ? "monthly" : "annual",
+                                                contractLengthMonths: months === 1 ? undefined : {
+                                                    type: "triangular",
+                                                    min: months,
+                                                    mode: months,
+                                                    max: months,
+                                                },
                                             },
-                                        })
-                                    }
-                                >
-                                    <SelectTrigger className="rounded-xl">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="monthly">Monthly</SelectItem>
-                                        <SelectItem value="annual">Annual (Custom Period)</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                        });
+                                    }}
+                                    className="rounded-xl"
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {(() => {
+                                        const contractLength = stream.unitEconomics.contractLengthMonths;
+                                        const months = contractLength && contractLength.type === "triangular" && contractLength.mode !== undefined
+                                            ? Math.round(contractLength.mode)
+                                            : (stream.unitEconomics.billingFrequency === "monthly" ? 1 : 12);
+
+                                        if (months === 1) return "Monthly billing";
+                                        if (months === 2) return "Every 2 months";
+                                        if (months === 3) return "Quarterly";
+                                        if (months === 6) return "Semi-annually";
+                                        if (months === 12) return "Annually";
+                                        return `Every ${months} months`;
+                                    })()}
+                                </p>
                             </div>
 
                             {stream.unitEconomics.billingFrequency === "annual" && (
-                                <DistributionInput
-                                    label="Billing Cycle (months)"
-                                    value={stream.unitEconomics.contractLengthMonths ?? { type: "triangular", min: 12, mode: 12, max: 12 }}
-                                    onChange={(dist) =>
-                                        updateStream({
-                                            unitEconomics: {
-                                                ...stream.unitEconomics,
-                                                contractLengthMonths: dist,
-                                            },
-                                        })
-                                    }
-                                />
+                                <div>
+                                    <Label>Revenue Recognition</Label>
+                                    <Select
+                                        value={stream.unitEconomics.revenueRecognition ?? "upfront"}
+                                        onValueChange={(v) =>
+                                            updateStream({
+                                                unitEconomics: {
+                                                    ...stream.unitEconomics,
+                                                    revenueRecognition: v as "upfront" | "monthly-accrual",
+                                                },
+                                            })
+                                        }
+                                    >
+                                        <SelectTrigger className="rounded-xl">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="upfront">Recognize upfront (when billed)</SelectItem>
+                                            <SelectItem value="monthly-accrual">Recognize monthly (accrual)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Upfront: Full contract value recognized when customer is billed. Monthly accrual: Contract value spread evenly over billing cycle.
+                                    </p>
+                                </div>
                             )}
 
                             <div>

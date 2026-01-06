@@ -198,7 +198,7 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
             }
 
             if (m >= startMonth && m <= endMonth) {
-                const monthlyUnitCost = getMonthlyUnitCost(task);
+                const monthlyUnitCost = getMonthlyUnitCost(task, m, startMonth);
                 monthly = monthlyUnitCost * count;
             }
 

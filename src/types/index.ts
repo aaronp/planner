@@ -62,6 +62,7 @@ export type UnitEconomics = {
     deliveryCostModel: DeliveryCostModel;
     billingFrequency: "monthly" | "annual";
     contractLengthMonths?: Distribution; // For annual billing, contract duration
+    revenueRecognition?: "upfront" | "monthly-accrual"; // How to model revenue: upfront (when billed) or monthly accrual (spread over contract)
 };
 
 export type AdoptionModel = {

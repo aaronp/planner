@@ -157,7 +157,8 @@ export function computeSeries(
             if (isWithin(monthStartISO, t.computedStart, t.computedEnd)) {
                 const multiplier = taskMultipliers[t.id] ?? 1;
                 const count = getTaskCountAtMonth(t, m);
-                const monthlyUnitCost = getMonthlyUnitCost(t);
+                const taskStartMonth = monthIndexFromStart(start, t.computedStart);
+                const monthlyUnitCost = getMonthlyUnitCost(t, m, taskStartMonth);
                 return sum + monthlyUnitCost * multiplier * count;
             }
             return sum;

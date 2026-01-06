@@ -391,7 +391,7 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
 
                 // Monthly costs during task duration
                 if (i >= taskStartMonth && i <= taskEndMonth) {
-                    const monthlyUnitCost = getMonthlyUnitCost(task);
+                    const monthlyUnitCost = getMonthlyUnitCost(task, i, taskStartMonth);
                     taskMonthlyCosts += monthlyUnitCost * count;
                 }
             }

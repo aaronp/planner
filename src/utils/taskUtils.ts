@@ -187,23 +187,29 @@ export function calculateTaskStartDate(
 }
 
 /**
- * Calculate the actual monthly unit cost from the unit cost and frequency
+ * Calculate the unit cost for a specific month based on billing frequency
  * @param task - The task with unit cost and frequency
- * @returns The monthly cost (amortized if frequency is not monthly)
+ * @param currentMonth - The current month (absolute, from plan start)
+ * @param taskStartMonth - The month when the task starts (absolute, from plan start)
+ * @returns The unit cost for this month (full amount if it's a billing month, 0 otherwise)
  */
-export function getMonthlyUnitCost(task: Task): number {
+export function getMonthlyUnitCost(task: Task, currentMonth: number, taskStartMonth: number): number {
     const frequency = task.unitCostFrequency || "1m"; // Default to monthly if not specified
     const unitCost = task.costMonthly; // costMonthly stores the unit cost value
 
+    // Calculate how many months since the task started
+    const monthsSinceStart = currentMonth - taskStartMonth;
+
+    // Determine if this is a billing month based on frequency
     switch (frequency) {
-        case "1m": // Monthly - no conversion needed
+        case "1m": // Monthly - bill every month
             return unitCost;
-        case "3m": // Quarterly - divide by 3
-            return unitCost / 3;
-        case "6m": // Semi-annually - divide by 6
-            return unitCost / 6;
-        case "1y": // Yearly - divide by 12
-            return unitCost / 12;
+        case "3m": // Quarterly - bill every 3 months
+            return monthsSinceStart % 3 === 0 ? unitCost : 0;
+        case "6m": // Semi-annually - bill every 6 months
+            return monthsSinceStart % 6 === 0 ? unitCost : 0;
+        case "1y": // Yearly - bill every 12 months
+            return monthsSinceStart % 12 === 0 ? unitCost : 0;
         default:
             return unitCost;
     }

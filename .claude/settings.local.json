@@ -32,7 +32,8 @@
       "Bash(bun:*)",
       "Bash(npx vite --version)",
       "Bash(npx vite:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

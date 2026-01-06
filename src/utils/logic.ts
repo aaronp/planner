@@ -133,6 +133,9 @@ export function streamRevenueAtMonth(
             ? Math.round(getDistributionMode(stream.unitEconomics.contractLengthMonths, priceSelection))
             : 12;
 
+        // Default to upfront recognition for backward compatibility
+        const revenueRecognition = stream.unitEconomics.revenueRecognition || "upfront";
+
         let totalRevenue = 0;
 
         // Calculate revenue from all cohorts (current month and all previous renewal months)
@@ -140,10 +143,13 @@ export function streamRevenueAtMonth(
         for (let cohortMonth = startMonth; cohortMonth <= monthIndex; cohortMonth++) {
             const monthsSinceCohortStart = monthIndex - cohortMonth;
 
-            // Check if this cohort is billing this month
+            // Check if this cohort is billing this month (for upfront) or if we're in contract period (for accrual)
             const isCohortBillingMonth = monthsSinceCohortStart % contractLength === 0;
+            const isInContractPeriod = monthsSinceCohortStart < contractLength;
 
-            if (!isCohortBillingMonth) continue;
+            // Skip if not relevant for this recognition method
+            if (revenueRecognition === "upfront" && !isCohortBillingMonth) continue;
+            if (revenueRecognition === "monthly-accrual" && !isInContractPeriod) continue;
 
             // Calculate how many units from this cohort are still active
             // This is: (units at cohortMonth) - (churned units since then)
@@ -162,8 +168,6 @@ export function streamRevenueAtMonth(
                 cohortSize = stream.adoptionModel.initialUnits;
             } else {
                 // New acquisitions = change in units from previous month
-                const unitsAtCohortMonth = streamUnitsAtMonth(stream, cohortMonth, timeline, growthSelection);
-                const unitsBeforeCohortMonth = streamUnitsAtMonth(stream, cohortMonth - 1, timeline, growthSelection);
                 const acqRate = getDistributionMode(stream.adoptionModel.acquisitionRate, growthSelection);
 
                 // New cohort size is approximately the acquisition rate
@@ -176,7 +180,13 @@ export function streamRevenueAtMonth(
             const survivingUnits = cohortSize * Math.pow(netRetention, monthsSinceJoined);
 
             // Revenue from this cohort
-            totalRevenue += survivingUnits * priceMode * contractLength * streamMultiplier;
+            if (revenueRecognition === "upfront") {
+                // Charge full contract value when billed
+                totalRevenue += survivingUnits * priceMode * streamMultiplier;
+            } else {
+                // Monthly accrual: spread contract value over contract length
+                totalRevenue += (survivingUnits * priceMode * streamMultiplier) / contractLength;
+            }
         }
 
         return totalRevenue;
@@ -276,7 +286,8 @@ export function taskCostAtMonth(
     const count = getTaskCountAtMonth(task, monthIndex);
 
     const oneOff = isStartMonth ? task.costOneOff * taskMultiplier * count : 0;
-    const monthlyUnitCost = getMonthlyUnitCost(task);
+    const taskStartMonth = monthIndexFromStart(ventureStart, task.computedStart);
+    const monthlyUnitCost = getMonthlyUnitCost(task, monthIndex, taskStartMonth);
     const monthly = monthlyUnitCost * taskMultiplier * count;
     const total = oneOff + monthly;
 

@@ -142,8 +142,9 @@ export function TimelineView({
     const taskCostAtCursor = (t: ComputedTask) => {
         const taskMultiplier = multipliers.tasks[t.id] ?? 1;
         const active = isWithin(monthISO, t.computedStart, t.computedEnd);
-        const oneOff = monthIndexFromStart(start, t.computedStart) === month ? t.costOneOff : 0;
-        const monthlyUnitCost = getMonthlyUnitCost(t);
+        const taskStartMonth = monthIndexFromStart(start, t.computedStart);
+        const oneOff = taskStartMonth === month ? t.costOneOff : 0;
+        const monthlyUnitCost = getMonthlyUnitCost(t, month, taskStartMonth);
         return ((active ? monthlyUnitCost : 0) + oneOff) * taskMultiplier;
     };
 
@@ -152,8 +153,9 @@ export function TimelineView({
         const taskMultiplier = multipliers.tasks[t.id] ?? 1;
         const monthDate = addMonths(start, m);
         const active = isWithin(monthDate, t.computedStart, t.computedEnd);
-        const oneOff = monthIndexFromStart(start, t.computedStart) === m ? t.costOneOff : 0;
-        const monthlyUnitCost = getMonthlyUnitCost(t);
+        const taskStartMonth = monthIndexFromStart(start, t.computedStart);
+        const oneOff = taskStartMonth === m ? t.costOneOff : 0;
+        const monthlyUnitCost = getMonthlyUnitCost(t, m, taskStartMonth);
         return ((active ? monthlyUnitCost : 0) + oneOff) * taskMultiplier;
     };
 
@@ -419,7 +421,11 @@ export function TimelineView({
                                                         )}
                                                     </div>
                                                     <div className="mt-1 text-xs text-muted-foreground">
-                                                        One-off {fmtCurrency(t.costOneOff, currency)} · Monthly {fmtCurrency(getMonthlyUnitCost(t), currency)}
+                                                        One-off {fmtCurrency(t.costOneOff, currency)} · {(() => {
+                                                            const frequency = t.unitCostFrequency || "1m";
+                                                            const freqLabel = frequency === "1m" ? "Monthly" : frequency === "3m" ? "Quarterly" : frequency === "6m" ? "Semi-annually" : "Yearly";
+                                                            return `${freqLabel} ${fmtCurrency(t.costMonthly, currency)}`;
+                                                        })()}
                                                     </div>
                                                 </div>
 

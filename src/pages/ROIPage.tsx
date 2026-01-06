@@ -6,7 +6,7 @@ import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, TrendingUp, TrendingDown, PlayCircle, Sparkles, Zap, LayoutDashboard } from "lucide-react";
+import { AlertCircle, TrendingUp, TrendingDown, PlayCircle, Sparkles, Zap, LayoutDashboard, ArrowRight } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart, BarChart, Bar } from "recharts";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { VentureData } from "../types";
