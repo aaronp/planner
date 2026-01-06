@@ -67,7 +67,8 @@ export type UnitEconomics = {
 
 export type AdoptionModel = {
     initialUnits: number;
-    acquisitionRate: Distribution; // units per month
+    acquisitionRate: Distribution; // units per acquisition period
+    acquisitionFrequencyMonths?: number; // How often acquisitions occur (e.g., 1 = monthly, 3 = quarterly)
     churnRate?: Distribution; // % monthly churn
     expansionRate?: Distribution; // % monthly expansion
 };

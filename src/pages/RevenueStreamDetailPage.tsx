@@ -665,7 +665,7 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
                             </div>
 
                             <DistributionInput
-                                label="Acquisition Rate (units per month)"
+                                label="Acquisition Rate (units per period)"
                                 value={stream.adoptionModel.acquisitionRate}
                                 onChange={(dist) =>
                                     updateStream({
@@ -676,6 +676,36 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
                                     })
                                 }
                             />
+
+                            <div>
+                                <Label>Acquisition Frequency (months)</Label>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    value={stream.adoptionModel.acquisitionFrequencyMonths || 1}
+                                    onChange={(e) => {
+                                        const months = Math.max(1, parseInt(e.target.value) || 1);
+                                        updateStream({
+                                            adoptionModel: {
+                                                ...stream.adoptionModel,
+                                                acquisitionFrequencyMonths: months,
+                                            },
+                                        });
+                                    }}
+                                    className="rounded-xl"
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {(() => {
+                                        const months = stream.adoptionModel.acquisitionFrequencyMonths || 1;
+                                        if (months === 1) return "New units acquired monthly";
+                                        if (months === 2) return "New units acquired every 2 months";
+                                        if (months === 3) return "New units acquired quarterly";
+                                        if (months === 6) return "New units acquired semi-annually";
+                                        if (months === 12) return "New units acquired annually";
+                                        return `New units acquired every ${months} months`;
+                                    })()}
+                                </p>
+                            </div>
 
                             {stream.adoptionModel.churnRate && (
                                 <DistributionInput

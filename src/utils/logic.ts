@@ -72,12 +72,13 @@ export function streamUnitsAtMonth(
 
     // Calculate units based on adoption model
     const monthsSinceStart = monthIndex - startMonth;
-    const { initialUnits, acquisitionRate, churnRate, expansionRate } = stream.adoptionModel;
+    const { initialUnits, acquisitionRate, churnRate, expansionRate, acquisitionFrequencyMonths } = stream.adoptionModel;
 
     // Use growth selection for all growth-related distributions
     const acqRate = getDistributionMode(acquisitionRate, growthSelection);
     const churn = getDistributionMode(churnRate, growthSelection) || 0;
     const expansion = getDistributionMode(expansionRate, growthSelection) || 0;
+    const acqFrequency = acquisitionFrequencyMonths || 1; // Default to monthly
 
     // Get max units from market sizing SOM if available
     const maxUnits = stream.marketSizing?.som
@@ -87,8 +88,10 @@ export function streamUnitsAtMonth(
     // Simple model: start with initial units, grow by acquisition rate, apply net churn/expansion
     let units = initialUnits;
     for (let i = 0; i < monthsSinceStart; i++) {
-        // Add new acquisitions
-        units += acqRate;
+        // Add new acquisitions only on acquisition months
+        if (i % acqFrequency === 0) {
+            units += acqRate;
+        }
         // Apply net churn/expansion: units * (1 - churn + expansion)
         units = units * (1 - churn / 100 + expansion / 100);
         // Cap at max units if specified
@@ -167,12 +170,13 @@ export function streamRevenueAtMonth(
                 // Initial cohort
                 cohortSize = stream.adoptionModel.initialUnits;
             } else {
-                // New acquisitions = change in units from previous month
+                // New acquisitions only on acquisition months
                 const acqRate = getDistributionMode(stream.adoptionModel.acquisitionRate, growthSelection);
+                const acqFrequency = stream.adoptionModel.acquisitionFrequencyMonths || 1;
+                const monthsSinceStreamStart = cohortMonth - startMonth;
 
-                // New cohort size is approximately the acquisition rate
-                // (This is a simplification - the actual calc would need to separate growth from existing users)
-                cohortSize = acqRate;
+                // New cohort size is the acquisition rate only if this is an acquisition month
+                cohortSize = (monthsSinceStreamStart % acqFrequency === 0) ? acqRate : 0;
             }
 
             // Apply retention from cohort start to current month

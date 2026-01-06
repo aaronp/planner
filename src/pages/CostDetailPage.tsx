@@ -492,6 +492,7 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
                                     yAxisId="count"
                                     orientation="right"
                                     label={{ value: "Count", angle: 90, position: "insideRight" }}
+                                    tickFormatter={(v) => Math.round(v).toString()}
                                 />
                                 <Tooltip
                                     formatter={(value: number, name: string) => {
