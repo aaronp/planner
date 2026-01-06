@@ -1,12 +1,13 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
-import type { VentureData, Task, CountSchedulePoint, Phase } from "../types";
+import type { VentureData, Task, CountSchedulePoint, Phase, TaskDeliverable } from "../types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Plus, Trash2, BarChart3, GripVertical } from "lucide-react";
 import { fmtCurrency } from "../utils/formatUtils";
 import { computeTaskDates } from "../utils/modelEngine";
@@ -48,6 +49,7 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
 
     const phases = data.phases ?? [];
     const countSchedule = task.countSchedule ?? [];
+    const deliverables = task.deliverables ?? [];
 
     // Calculate computed tasks
     const computedTasks = useMemo(() => computeTaskDates(data.tasks, data.meta.start), [data.tasks, data.meta.start]);
@@ -229,6 +231,37 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
         updateTask({ countSchedule: countSchedule.filter((_, i) => i !== index) });
     };
 
+    // Deliverable handlers
+    const getNextDeliverableId = () => {
+        const nums = deliverables
+            .map((d) => {
+                const match = d.id.match(/^D(\d+)$/);
+                return match ? parseInt(match[1], 10) : 0;
+            })
+            .filter((n) => !isNaN(n));
+        const maxNum = nums.length > 0 ? Math.max(...nums) : 0;
+        return `D${maxNum + 1}`;
+    };
+
+    const handleAddDeliverable = () => {
+        const newDeliverable: TaskDeliverable = {
+            id: getNextDeliverableId(),
+            description: "",
+            importance: "M",
+        };
+        updateTask({ deliverables: [...deliverables, newDeliverable] });
+    };
+
+    const handleUpdateDeliverable = (index: number, updates: Partial<TaskDeliverable>) => {
+        const newDeliverables = [...deliverables];
+        newDeliverables[index] = { ...newDeliverables[index]!, ...updates };
+        updateTask({ deliverables: newDeliverables });
+    };
+
+    const handleDeleteDeliverable = (index: number) => {
+        updateTask({ deliverables: deliverables.filter((_, i) => i !== index) });
+    };
+
     // Track previous computed values to avoid unnecessary updates
     const prevComputedRef = useRef<{ start?: string; end?: string; duration?: string }>({});
 
@@ -408,155 +441,128 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
                 </CardContent>
             </Card>
 
-            {/* Timeline View */}
+            {/* Tabbed Content */}
             <Card className="rounded-2xl shadow-sm">
-                <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between gap-3">
-                        <div>
-                            <CardTitle className="text-base">Task Timeline</CardTitle>
-                            <div className="text-sm text-muted-foreground">
-                                Drag the task bar to change when it starts
-                            </div>
-                        </div>
-                        <Badge variant="secondary">Horizon: {data.meta.horizonMonths} months</Badge>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    <div
-                        ref={trackRef}
-                        className="relative w-full rounded-2xl border bg-background overflow-visible"
-                        style={{ height: "80px" }}
-                        onMouseMove={(e) => {
-                            if (isDragging && !task.dependsOn?.length) {
-                                handleTimelineDrag(e.clientX);
-                            }
-                        }}
-                        onMouseUp={() => setIsDragging(false)}
-                        onMouseLeave={() => setIsDragging(false)}
-                    >
-                        {/* Phase backgrounds */}
-                        {phases.map((phase, idx) => {
-                            let startMonth = 0;
-                            for (let i = 0; i < idx; i++) {
-                                const prevPhase = phases[i]!;
-                                startMonth += durationToMonths(prevPhase.duration);
-                            }
+                <Tabs defaultValue="preview" className="w-full">
+                    <CardHeader className="pb-3">
+                        <TabsList className="grid w-full grid-cols-3">
+                            <TabsTrigger value="preview">Cost Preview</TabsTrigger>
+                            <TabsTrigger value="schedule">Resource Scale Schedule</TabsTrigger>
+                            <TabsTrigger value="deliverables">Deliverables</TabsTrigger>
+                        </TabsList>
+                    </CardHeader>
 
-                            let durationMonths = durationToMonths(phase.duration);
-                            if (durationMonths === 0) {
-                                durationMonths = data.meta.horizonMonths - startMonth;
-                            }
-                            const leftPct = (startMonth / data.meta.horizonMonths) * 100;
-                            const widthPct = (durationMonths / data.meta.horizonMonths) * 100;
-                            return (
-                                <div
-                                    key={phase.id}
-                                    className="absolute inset-y-0 pointer-events-none"
-                                    style={{
-                                        left: `${leftPct}%`,
-                                        width: `${widthPct}%`,
-                                        background: `${phase.color}10`,
-                                        borderLeft: `2px solid ${phase.color}40`,
-                                        borderRight: `2px solid ${phase.color}40`,
-                                    }}
-                                >
-                                    <div
-                                        className="absolute top-1 left-2 text-xs font-medium opacity-60"
-                                        style={{ color: phase.color }}
-                                    >
-                                        {phase.name}
-                                    </div>
-                                </div>
-                            );
-                        })}
-
-                        {/* Month markers */}
-                        <div className="absolute inset-0 pointer-events-none opacity-60">
-                            {Array.from({ length: data.meta.horizonMonths + 1 }).map((_, i) => (
-                                <div
-                                    key={i}
-                                    className="absolute top-0 bottom-0 w-px bg-border"
-                                    style={{ left: `${(i / data.meta.horizonMonths) * 100}%` }}
+                    {/* Cost Preview Tab */}
+                    <TabsContent value="preview">
+                        <CardHeader className="pt-0">
+                            <CardTitle className="text-lg">Cost Preview</CardTitle>
+                        </CardHeader>
+                <CardContent className="space-y-6">
+                    {/* Chart */}
+                    <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={costData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="month" label={{ value: "Month", position: "insideBottom", offset: -5 }} />
+                                <YAxis
+                                    yAxisId="cost"
+                                    label={{ value: "Cost", angle: -90, position: "insideLeft" }}
+                                    tickFormatter={(v) => fmtCurrency(v, data.meta.currency)}
                                 />
-                            ))}
-                        </div>
-
-                        {/* Task bar */}
-                        <div
-                            className={`absolute h-10 rounded-2xl border flex items-center justify-between px-3 select-none ${
-                                task.dependsOn?.length ? "opacity-50 cursor-not-allowed" : "cursor-grab active:cursor-grabbing"
-                            }`}
-                            style={{
-                                top: "20px",
-                                left: `${(taskStartMonth / data.meta.horizonMonths) * 100}%`,
-                                width: `${Math.min((taskDurationMonths / data.meta.horizonMonths) * 100, 100 - (taskStartMonth / data.meta.horizonMonths) * 100)}%`,
-                                background: "#3b82f615",
-                                borderColor: "#3b82f655",
-                                transition: isDragging ? "none" : "all 0.2s",
-                            }}
-                            onMouseDown={(e) => {
-                                if (!task.dependsOn?.length) {
-                                    e.preventDefault();
-                                    setIsDragging(true);
-                                }
-                            }}
-                        >
-                            <div className="flex items-center justify-center w-6 h-6 -ml-2">
-                                {!task.dependsOn?.length && <GripVertical className="h-4 w-4 text-muted-foreground" />}
-                            </div>
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <div className="h-3 w-3 rounded-full" style={{ background: "#3b82f6" }} />
-                                <div className="truncate text-sm font-medium">{task.name}</div>
-                                <Badge variant="outline" title={task.name}>
-                                    {task.id}
-                                </Badge>
-                                {task.duration && (
-                                    <Badge variant="secondary" className="text-xs">
-                                        {task.duration}
-                                    </Badge>
-                                )}
-                            </div>
-                        </div>
+                                <YAxis
+                                    yAxisId="count"
+                                    orientation="right"
+                                    label={{ value: "Count", angle: 90, position: "insideRight" }}
+                                />
+                                <Tooltip
+                                    formatter={(value: number, name: string) => {
+                                        if (name === "count") return [value, "Count"];
+                                        return [fmtCurrency(value, data.meta.currency), name];
+                                    }}
+                                />
+                                <Legend />
+                                <Line
+                                    yAxisId="count"
+                                    type="stepAfter"
+                                    dataKey="count"
+                                    stroke="#8b5cf6"
+                                    strokeWidth={2}
+                                    dot={false}
+                                    name="Count"
+                                />
+                                <Line
+                                    yAxisId="cost"
+                                    type="monotone"
+                                    dataKey="monthly"
+                                    stroke="#3b82f6"
+                                    strokeWidth={2}
+                                    dot={false}
+                                    name="Monthly Cost"
+                                />
+                                <Line
+                                    yAxisId="cost"
+                                    type="monotone"
+                                    dataKey="total"
+                                    stroke="#dc2626"
+                                    strokeWidth={3}
+                                    dot={false}
+                                    name="Total Cost"
+                                />
+                            </LineChart>
+                        </ResponsiveContainer>
                     </div>
 
-                    {/* Month ticks */}
-                    <div className="relative w-full mt-2">
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                            {Array.from({ length: Math.min(11, data.meta.horizonMonths + 1) }).map((_, i) => {
-                                const month = Math.round((i / 10) * data.meta.horizonMonths);
-                                return (
-                                    <div key={i} className="flex flex-col items-center">
-                                        <div className="h-2 w-px bg-border" />
-                                        <div className="mt-1">M{month}</div>
-                                    </div>
-                                );
-                            })}
+                    {/* Summary */}
+                    <div className="grid gap-4 md:grid-cols-3">
+                        <div className="rounded-lg border p-4">
+                            <p className="text-sm text-muted-foreground">Peak Monthly Cost</p>
+                            <p className="text-2xl font-semibold">
+                                {fmtCurrency(
+                                    Math.max(...costData.map((d) => d.monthly)),
+                                    data.meta.currency
+                                )}
+                            </p>
+                        </div>
+                        <div className="rounded-lg border p-4">
+                            <p className="text-sm text-muted-foreground">Total Cost (All Months)</p>
+                            <p className="text-2xl font-semibold">
+                                {fmtCurrency(
+                                    costData.reduce((sum, d) => sum + d.total, 0),
+                                    data.meta.currency
+                                )}
+                            </p>
+                        </div>
+                        <div className="rounded-lg border p-4">
+                            <p className="text-sm text-muted-foreground">Peak Count</p>
+                            <p className="text-2xl font-semibold">
+                                {Math.max(...costData.map((d) => d.count))}
+                            </p>
                         </div>
                     </div>
                 </CardContent>
-            </Card>
+                    </TabsContent>
 
-            {/* Count Schedule */}
-            <Card className="rounded-2xl shadow-sm">
-                <CardHeader>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <CardTitle
-                                className="text-lg"
-                                title="Schedule resource level changes throughout the project lifecycle"
-                            >
-                                Count Schedule
-                            </CardTitle>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                Adjust headcount/resource count at different points in time
-                            </p>
-                        </div>
-                        <Button onClick={handleAddSchedulePoint} className="rounded-2xl">
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Schedule Point
-                        </Button>
-                    </div>
-                </CardHeader>
+                    {/* Resource Scale Schedule Tab */}
+                    <TabsContent value="schedule">
+                        <CardHeader className="pt-0">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <CardTitle
+                                        className="text-lg"
+                                        title="Schedule resource level changes throughout the project lifecycle"
+                                    >
+                                        Resource Scale Schedule
+                                    </CardTitle>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        Adjust headcount/resource count at different points in time
+                                    </p>
+                                </div>
+                                <Button onClick={handleAddSchedulePoint} className="rounded-2xl">
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Add Schedule Point
+                                </Button>
+                            </div>
+                        </CardHeader>
                 <CardContent>
                     {sortedSchedule.length === 0 ? (
                         <div className="space-y-4">
@@ -735,93 +741,224 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
                         </div>
                     )}
                 </CardContent>
+                    </TabsContent>
+
+                    {/* Deliverables Tab */}
+                    <TabsContent value="deliverables">
+                        <CardHeader className="pt-0">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <CardTitle className="text-lg">Deliverables</CardTitle>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        Track deliverables and responsibilities for this task using MoSCoW prioritization
+                                    </p>
+                                </div>
+                                <Button onClick={handleAddDeliverable} className="rounded-2xl">
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Add Deliverable
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            {deliverables.length === 0 ? (
+                                <div className="text-center p-8 text-muted-foreground">
+                                    No deliverables yet. Add your first deliverable to get started.
+                                </div>
+                            ) : (
+                                <div className="rounded-xl border">
+                                    <table className="w-full text-sm">
+                                        <thead className="sticky top-0 bg-background border-b">
+                                            <tr>
+                                                <th className="text-left p-2 font-medium w-[100px]">ID</th>
+                                                <th className="text-left p-2 font-medium">Description</th>
+                                                <th className="text-left p-2 font-medium w-[150px]">Importance</th>
+                                                <th className="p-2 w-[64px]"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {deliverables.map((deliverable, idx) => (
+                                                <tr key={deliverable.id} className="border-b last:border-b-0">
+                                                    <td className="p-2">
+                                                        <Input
+                                                            value={deliverable.id}
+                                                            disabled
+                                                            className="h-8 rounded-xl bg-muted font-mono text-xs"
+                                                        />
+                                                    </td>
+                                                    <td className="p-2">
+                                                        <Input
+                                                            value={deliverable.description}
+                                                            placeholder="Describe the deliverable..."
+                                                            onChange={(e) =>
+                                                                handleUpdateDeliverable(idx, {
+                                                                    description: e.target.value,
+                                                                })
+                                                            }
+                                                            className="h-8 rounded-xl"
+                                                        />
+                                                    </td>
+                                                    <td className="p-2">
+                                                        <Select
+                                                            value={deliverable.importance}
+                                                            onValueChange={(value: "M" | "S" | "C" | "W") =>
+                                                                handleUpdateDeliverable(idx, { importance: value })
+                                                            }
+                                                        >
+                                                            <SelectTrigger className="h-8 rounded-xl">
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="M">Must have</SelectItem>
+                                                                <SelectItem value="S">Should have</SelectItem>
+                                                                <SelectItem value="C">Could have</SelectItem>
+                                                                <SelectItem value="W">Won't have</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </td>
+                                                    <td className="p-2">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => handleDeleteDeliverable(idx)}
+                                                            className="rounded-xl h-8 w-8 p-0"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </CardContent>
+                    </TabsContent>
+                </Tabs>
             </Card>
 
-            {/* Cost Preview */}
+            {/* Timeline View */}
             <Card className="rounded-2xl shadow-sm">
-                <CardHeader>
-                    <CardTitle className="text-lg">Cost Preview</CardTitle>
+                <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <CardTitle className="text-base">Task Timeline</CardTitle>
+                            <div className="text-sm text-muted-foreground">
+                                Drag the task bar to change when it starts
+                            </div>
+                        </div>
+                        <Badge variant="secondary">Horizon: {data.meta.horizonMonths} months</Badge>
+                    </div>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                    {/* Chart */}
-                    <div className="h-[300px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={costData}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="month" label={{ value: "Month", position: "insideBottom", offset: -5 }} />
-                                <YAxis
-                                    yAxisId="cost"
-                                    label={{ value: "Cost", angle: -90, position: "insideLeft" }}
-                                    tickFormatter={(v) => fmtCurrency(v, data.meta.currency)}
-                                />
-                                <YAxis
-                                    yAxisId="count"
-                                    orientation="right"
-                                    label={{ value: "Count", angle: 90, position: "insideRight" }}
-                                />
-                                <Tooltip
-                                    formatter={(value: number, name: string) => {
-                                        if (name === "count") return [value, "Count"];
-                                        return [fmtCurrency(value, data.meta.currency), name];
+                <CardContent>
+                    <div
+                        ref={trackRef}
+                        className="relative w-full rounded-2xl border bg-background overflow-visible"
+                        style={{ height: "80px" }}
+                        onMouseMove={(e) => {
+                            if (isDragging && !task.dependsOn?.length) {
+                                handleTimelineDrag(e.clientX);
+                            }
+                        }}
+                        onMouseUp={() => setIsDragging(false)}
+                        onMouseLeave={() => setIsDragging(false)}
+                    >
+                        {/* Phase backgrounds */}
+                        {phases.map((phase, idx) => {
+                            let startMonth = 0;
+                            for (let i = 0; i < idx; i++) {
+                                const prevPhase = phases[i]!;
+                                startMonth += durationToMonths(prevPhase.duration);
+                            }
+
+                            let durationMonths = durationToMonths(phase.duration);
+                            if (durationMonths === 0) {
+                                durationMonths = data.meta.horizonMonths - startMonth;
+                            }
+                            const leftPct = (startMonth / data.meta.horizonMonths) * 100;
+                            const widthPct = (durationMonths / data.meta.horizonMonths) * 100;
+                            return (
+                                <div
+                                    key={phase.id}
+                                    className="absolute inset-y-0 pointer-events-none"
+                                    style={{
+                                        left: `${leftPct}%`,
+                                        width: `${widthPct}%`,
+                                        background: `${phase.color}10`,
+                                        borderLeft: `2px solid ${phase.color}40`,
+                                        borderRight: `2px solid ${phase.color}40`,
                                     }}
+                                >
+                                    <div
+                                        className="absolute top-1 left-2 text-xs font-medium opacity-60"
+                                        style={{ color: phase.color }}
+                                    >
+                                        {phase.name}
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        {/* Month markers */}
+                        <div className="absolute inset-0 pointer-events-none opacity-60">
+                            {Array.from({ length: data.meta.horizonMonths + 1 }).map((_, i) => (
+                                <div
+                                    key={i}
+                                    className="absolute top-0 bottom-0 w-px bg-border"
+                                    style={{ left: `${(i / data.meta.horizonMonths) * 100}%` }}
                                 />
-                                <Legend />
-                                <Line
-                                    yAxisId="count"
-                                    type="stepAfter"
-                                    dataKey="count"
-                                    stroke="#8b5cf6"
-                                    strokeWidth={2}
-                                    dot={false}
-                                    name="Count"
-                                />
-                                <Line
-                                    yAxisId="cost"
-                                    type="monotone"
-                                    dataKey="monthly"
-                                    stroke="#3b82f6"
-                                    strokeWidth={2}
-                                    dot={false}
-                                    name="Monthly Cost"
-                                />
-                                <Line
-                                    yAxisId="cost"
-                                    type="monotone"
-                                    dataKey="total"
-                                    stroke="#dc2626"
-                                    strokeWidth={3}
-                                    dot={false}
-                                    name="Total Cost"
-                                />
-                            </LineChart>
-                        </ResponsiveContainer>
+                            ))}
+                        </div>
+
+                        {/* Task bar */}
+                        <div
+                            className={`absolute h-10 rounded-2xl border flex items-center justify-between px-3 select-none ${
+                                task.dependsOn?.length ? "opacity-50 cursor-not-allowed" : "cursor-grab active:cursor-grabbing"
+                            }`}
+                            style={{
+                                top: "20px",
+                                left: `${(taskStartMonth / data.meta.horizonMonths) * 100}%`,
+                                width: `${Math.min((taskDurationMonths / data.meta.horizonMonths) * 100, 100 - (taskStartMonth / data.meta.horizonMonths) * 100)}%`,
+                                background: "#3b82f615",
+                                borderColor: "#3b82f655",
+                                transition: isDragging ? "none" : "all 0.2s",
+                            }}
+                            onMouseDown={(e) => {
+                                if (!task.dependsOn?.length) {
+                                    e.preventDefault();
+                                    setIsDragging(true);
+                                }
+                            }}
+                        >
+                            <div className="flex items-center justify-center w-6 h-6 -ml-2">
+                                {!task.dependsOn?.length && <GripVertical className="h-4 w-4 text-muted-foreground" />}
+                            </div>
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <div className="h-3 w-3 rounded-full" style={{ background: "#3b82f6" }} />
+                                <div className="truncate text-sm font-medium">{task.name}</div>
+                                <Badge variant="outline" title={task.name}>
+                                    {task.id}
+                                </Badge>
+                                {task.duration && (
+                                    <Badge variant="secondary" className="text-xs">
+                                        {task.duration}
+                                    </Badge>
+                                )}
+                            </div>
+                        </div>
                     </div>
 
-                    {/* Summary */}
-                    <div className="grid gap-4 md:grid-cols-3">
-                        <div className="rounded-lg border p-4">
-                            <p className="text-sm text-muted-foreground">Peak Monthly Cost</p>
-                            <p className="text-2xl font-semibold">
-                                {fmtCurrency(
-                                    Math.max(...costData.map((d) => d.monthly)),
-                                    data.meta.currency
-                                )}
-                            </p>
-                        </div>
-                        <div className="rounded-lg border p-4">
-                            <p className="text-sm text-muted-foreground">Total Cost (All Months)</p>
-                            <p className="text-2xl font-semibold">
-                                {fmtCurrency(
-                                    costData.reduce((sum, d) => sum + d.total, 0),
-                                    data.meta.currency
-                                )}
-                            </p>
-                        </div>
-                        <div className="rounded-lg border p-4">
-                            <p className="text-sm text-muted-foreground">Peak Count</p>
-                            <p className="text-2xl font-semibold">
-                                {Math.max(...costData.map((d) => d.count))}
-                            </p>
+                    {/* Month ticks */}
+                    <div className="relative w-full mt-2">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                            {Array.from({ length: Math.min(11, data.meta.horizonMonths + 1) }).map((_, i) => {
+                                const month = Math.round((i / 10) * data.meta.horizonMonths);
+                                return (
+                                    <div key={i} className="flex flex-col items-center">
+                                        <div className="h-2 w-px bg-border" />
+                                        <div className="mt-1">M{month}</div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </CardContent>

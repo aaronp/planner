@@ -155,6 +155,12 @@ export type CountSchedulePoint = {
     expression?: string; // For relative mode: e.g., "s+1m", "e-2m", "s+25%"
 };
 
+export type TaskDeliverable = {
+    id: string;
+    description: string;
+    importance: "M" | "S" | "C" | "W"; // MoSCoW: Must have, Should have, Could have, Won't have
+};
+
 export type Task = {
     id: string;
     name: string;
@@ -165,6 +171,7 @@ export type Task = {
     dependsOn: string[]; // Format: ["T1", "T1e+2w", "T2s+3d"] - ID + optional (s|e) + optional +duration
     count?: number; // Number of resources (e.g., 8 developers) - defaults to 1 if not specified
     countSchedule?: CountSchedulePoint[]; // Optional schedule of count changes over time
+    deliverables?: TaskDeliverable[]; // Optional deliverables/responsibilities for this task
 };
 
 export type ComputedTask = Task & {
