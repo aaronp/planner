@@ -1,6 +1,7 @@
 import type { RevenueStream, FixedCost, ComputedTask, VentureData, Distribution } from "../types";
 import { addMonths, isWithin, monthIndexFromStart } from "./dateUtils";
 import type { DistributionSelection } from "../contexts/RiskContext";
+import { getMonthlyUnitCost } from "./taskUtils";
 
 /**
  * Get a value from a distribution based on selection (min/mode/max)
@@ -273,7 +274,8 @@ export function taskCostAtMonth(
     const count = getTaskCountAtMonth(task, monthIndex);
 
     const oneOff = isStartMonth ? task.costOneOff * taskMultiplier * count : 0;
-    const monthly = task.costMonthly * taskMultiplier * count;
+    const monthlyUnitCost = getMonthlyUnitCost(task);
+    const monthly = monthlyUnitCost * taskMultiplier * count;
     const total = oneOff + monthly;
 
     return { oneOff, monthly, total };

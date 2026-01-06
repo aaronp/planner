@@ -4,7 +4,8 @@ import type { VentureData, Task, FixedCost, ComputedTask, Phase } from "../types
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { DataTable } from "../components/DataTable";
-import { isValidDuration, isValidDependency, calculateTaskStartDate, parseDependency } from "../utils/taskUtils";
+import { isValidDuration, isValidDependency, calculateTaskStartDate, parseDependency, getMonthlyUnitCost } from "../utils/taskUtils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { computeTaskDates } from "../utils/modelEngine";
 import { monthIndexFromStart, addMonths } from "../utils/dateUtils";
 import { Badge } from "@/components/ui/badge";
@@ -389,8 +390,9 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                 }
 
                 // Monthly costs during task duration
-                if (i >= taskStartMonth && i <= taskEndMonth && task.costMonthly) {
-                    taskMonthlyCosts += task.costMonthly * count;
+                if (i >= taskStartMonth && i <= taskEndMonth) {
+                    const monthlyUnitCost = getMonthlyUnitCost(task);
+                    taskMonthlyCosts += monthlyUnitCost * count;
                 }
             }
 
@@ -696,7 +698,47 @@ export function CostsPage({ data, setTasks, setFixedCosts }: CostsPageProps) {
                                     },
                                 },
                                 { key: "costOneOff", header: "One-off cost", width: "140px", input: "number" },
-                                { key: "costMonthly", header: "Monthly cost", width: "140px", input: "number" },
+                                {
+                                    key: "costMonthly",
+                                    header: "Unit cost",
+                                    width: "140px",
+                                    render: (v, row) => (
+                                        <Input
+                                            type="number"
+                                            className="h-8 rounded-xl"
+                                            value={v ?? 0}
+                                            onChange={(e) => {
+                                                setTasks(data.tasks.map((t) => (t.id === row.id ? { ...t, costMonthly: parseFloat(e.target.value) || 0 } : t)));
+                                            }}
+                                        />
+                                    ),
+                                },
+                                {
+                                    key: "unitCostFrequency" as any,
+                                    header: "Per",
+                                    width: "120px",
+                                    render: (_, row) => {
+                                        const frequency = row.unitCostFrequency || "1m";
+                                        return (
+                                            <Select
+                                                value={frequency}
+                                                onValueChange={(value: "1m" | "3m" | "6m" | "1y") => {
+                                                    setTasks(data.tasks.map((t) => (t.id === row.id ? { ...t, unitCostFrequency: value } : t)));
+                                                }}
+                                            >
+                                                <SelectTrigger className="h-8 rounded-xl">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="1m">month</SelectItem>
+                                                    <SelectItem value="3m">quarter</SelectItem>
+                                                    <SelectItem value="6m">6 months</SelectItem>
+                                                    <SelectItem value="1y">year</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        );
+                                    },
+                                },
                                 {
                                     key: "count",
                                     header: "Count (headcount)",

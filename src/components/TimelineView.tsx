@@ -9,6 +9,7 @@ import { computeSeries, computeTaskDates } from "../utils/modelEngine";
 import { calcBarHeight } from "../utils/chartScaling";
 import { streamUnitsAtMonth as streamUnitsAtMonthUtil, streamRevenueAtMonth as streamRevenueAtMonthUtil } from "../utils/logic";
 import { useRisk } from "../contexts/RiskContext";
+import { getMonthlyUnitCost } from "../utils/taskUtils";
 
 // Map currency codes to symbols
 function getCurrencySymbol(currency: string): string {
@@ -142,7 +143,8 @@ export function TimelineView({
         const taskMultiplier = multipliers.tasks[t.id] ?? 1;
         const active = isWithin(monthISO, t.computedStart, t.computedEnd);
         const oneOff = monthIndexFromStart(start, t.computedStart) === month ? t.costOneOff : 0;
-        return ((active ? t.costMonthly : 0) + oneOff) * taskMultiplier;
+        const monthlyUnitCost = getMonthlyUnitCost(t);
+        return ((active ? monthlyUnitCost : 0) + oneOff) * taskMultiplier;
     };
 
     // Calculate cost for a specific task at a specific month index
@@ -151,7 +153,8 @@ export function TimelineView({
         const monthDate = addMonths(start, m);
         const active = isWithin(monthDate, t.computedStart, t.computedEnd);
         const oneOff = monthIndexFromStart(start, t.computedStart) === m ? t.costOneOff : 0;
-        return ((active ? t.costMonthly : 0) + oneOff) * taskMultiplier;
+        const monthlyUnitCost = getMonthlyUnitCost(t);
+        return ((active ? monthlyUnitCost : 0) + oneOff) * taskMultiplier;
     };
 
     // Calculate cumulative costs to date for a task
@@ -413,7 +416,7 @@ export function TimelineView({
                                                         )}
                                                     </div>
                                                     <div className="mt-1 text-xs text-muted-foreground">
-                                                        One-off {fmtCurrency(t.costOneOff, currency)} · Monthly {fmtCurrency(t.costMonthly, currency)}
+                                                        One-off {fmtCurrency(t.costOneOff, currency)} · Monthly {fmtCurrency(getMonthlyUnitCost(t), currency)}
                                                     </div>
                                                 </div>
 

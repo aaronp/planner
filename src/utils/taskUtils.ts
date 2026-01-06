@@ -185,3 +185,26 @@ export function calculateTaskStartDate(
     computing.delete(task.id);
     return finalDate;
 }
+
+/**
+ * Calculate the actual monthly unit cost from the unit cost and frequency
+ * @param task - The task with unit cost and frequency
+ * @returns The monthly cost (amortized if frequency is not monthly)
+ */
+export function getMonthlyUnitCost(task: Task): number {
+    const frequency = task.unitCostFrequency || "1m"; // Default to monthly if not specified
+    const unitCost = task.costMonthly; // costMonthly stores the unit cost value
+
+    switch (frequency) {
+        case "1m": // Monthly - no conversion needed
+            return unitCost;
+        case "3m": // Quarterly - divide by 3
+            return unitCost / 3;
+        case "6m": // Semi-annually - divide by 6
+            return unitCost / 6;
+        case "1y": // Yearly - divide by 12
+            return unitCost / 12;
+        default:
+            return unitCost;
+    }
+}

@@ -2,7 +2,7 @@ import type { VentureData, Segment, ISODate, YearAgg, Task, ComputedTask } from 
 import type { DistributionSelection } from "../contexts/RiskContext";
 import { monthIndexFromStart, addMonths, isWithin, todayISO } from "./dateUtils";
 import { clamp01, round2 } from "./formatUtils";
-import { parseDependency, addDuration } from "./taskUtils";
+import { parseDependency, addDuration, getMonthlyUnitCost } from "./taskUtils";
 import { streamRevenueAtMonth, streamAcquisitionCostsAtMonth } from "./logic";
 
 /**
@@ -157,7 +157,8 @@ export function computeSeries(
             if (isWithin(monthStartISO, t.computedStart, t.computedEnd)) {
                 const multiplier = taskMultipliers[t.id] ?? 1;
                 const count = getTaskCountAtMonth(t, m);
-                return sum + t.costMonthly * multiplier * count;
+                const monthlyUnitCost = getMonthlyUnitCost(t);
+                return sum + monthlyUnitCost * multiplier * count;
             }
             return sum;
         }, 0);

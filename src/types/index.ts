@@ -167,7 +167,8 @@ export type Task = {
     start?: ISODate; // Manual start (only if no dependencies), otherwise calculated
     duration?: string; // e.g., "2w", "3m", "1y" - empty means ongoing task
     costOneOff: number;
-    costMonthly: number;
+    costMonthly: number; // Unit cost (backward compat - stored value)
+    unitCostFrequency?: "1m" | "3m" | "6m" | "1y"; // Frequency for unit cost: monthly, quarterly, semi-annually, yearly
     dependsOn: string[]; // Format: ["T1", "T1e+2w", "T2s+3d"] - ID + optional (s|e) + optional +duration
     count?: number; // Number of resources (e.g., 8 developers) - defaults to 1 if not specified
     countSchedule?: CountSchedulePoint[]; // Optional schedule of count changes over time

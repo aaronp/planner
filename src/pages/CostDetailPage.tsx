@@ -12,6 +12,7 @@ import { ArrowLeft, Plus, Trash2, BarChart3, GripVertical } from "lucide-react";
 import { fmtCurrency } from "../utils/formatUtils";
 import { computeTaskDates } from "../utils/modelEngine";
 import { monthIndexFromStart, addMonths } from "../utils/dateUtils";
+import { getMonthlyUnitCost } from "../utils/taskUtils";
 import { Line, LineChart, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, Legend } from "recharts";
 
 type CostDetailPageProps = {
@@ -197,7 +198,8 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
             }
 
             if (m >= startMonth && m <= endMonth) {
-                monthly = task.costMonthly * count;
+                const monthlyUnitCost = getMonthlyUnitCost(task);
+                monthly = monthlyUnitCost * count;
             }
 
             result.push({
@@ -370,7 +372,7 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-4 gap-4">
                         <div>
                             <Label>One-off Cost</Label>
                             <Input
@@ -381,13 +383,30 @@ export function CostDetailPage({ data, setTasks }: CostDetailPageProps) {
                             />
                         </div>
                         <div>
-                            <Label>Monthly Cost (per unit)</Label>
+                            <Label>Unit Cost</Label>
                             <Input
                                 type="number"
                                 value={task.costMonthly}
                                 onChange={(e) => updateTask({ costMonthly: parseFloat(e.target.value) || 0 })}
                                 className="rounded-xl"
                             />
+                        </div>
+                        <div>
+                            <Label>Per</Label>
+                            <Select
+                                value={task.unitCostFrequency || "1m"}
+                                onValueChange={(value: "1m" | "3m" | "6m" | "1y") => updateTask({ unitCostFrequency: value })}
+                            >
+                                <SelectTrigger className="rounded-xl">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="1m">month</SelectItem>
+                                    <SelectItem value="3m">quarter</SelectItem>
+                                    <SelectItem value="6m">6 months</SelectItem>
+                                    <SelectItem value="1y">year</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div>
                             <Label>Base Count</Label>
