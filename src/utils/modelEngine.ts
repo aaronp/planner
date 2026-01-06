@@ -1,5 +1,5 @@
 import type { VentureData, Segment, ISODate, YearAgg, Task, ComputedTask } from "../types";
-import type { DistributionSelection } from "../contexts/RiskContext";
+import type { DistributionSelection, StreamDistributionSelections } from "../contexts/RiskContext";
 import { monthIndexFromStart, addMonths, isWithin, todayISO } from "./dateUtils";
 import { clamp01, round2 } from "./formatUtils";
 import { parseDependency, addDuration, getMonthlyUnitCost } from "./taskUtils";
@@ -118,7 +118,7 @@ export function computeSeries(
     taskMultipliers: Record<string, number> = {},
     fixedCostMultipliers: Record<string, number> = {},
     revenueStreamMultipliers: Record<string, number> = {},
-    streamDistributions: Record<string, DistributionSelection> = {}
+    streamDistributions: Record<string, StreamDistributionSelections> = {}
 ) {
     const { start, horizonMonths } = data.meta;
     const months = Array.from({ length: Math.max(1, horizonMonths) }, (_, i) => i);
@@ -212,8 +212,10 @@ export function computeSeries(
         if (data.revenueStreams) {
             for (const stream of data.revenueStreams) {
                 const multiplier = revenueStreamMultipliers[stream.id] ?? 1;
-                const streamRevenue = streamRevenueAtMonth(stream, m, data.timeline, multiplier, streamDistributions);
-                const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline, multiplier, streamDistributions);
+                const priceSelection = streamDistributions[stream.id]?.price ?? "mode";
+                const growthSelection = streamDistributions[stream.id]?.growth ?? "mode";
+                const streamRevenue = streamRevenueAtMonth(stream, m, data.timeline, multiplier, priceSelection, growthSelection);
+                const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline, multiplier, priceSelection, growthSelection);
                 revenue += (streamRevenue - acquisitionCosts.total);
             }
         }

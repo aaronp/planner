@@ -168,12 +168,15 @@ export function TimelineView({
 
     // Use centralized logic functions with multipliers and distribution selection
     const streamUnitsAtMonth = (stream: any, m: number) => {
-        return streamUnitsAtMonthUtil(stream, m, data.timeline, streamDistributions);
+        const growthSelection = streamDistributions[stream.id]?.growth ?? "mode";
+        return streamUnitsAtMonthUtil(stream, m, data.timeline, growthSelection);
     };
 
     const streamRevenueAtMonth = (stream: any, m: number) => {
         const streamMultiplier = multipliers.revenueStreams[stream.id] ?? 1;
-        return streamRevenueAtMonthUtil(stream, m, data.timeline, streamMultiplier, streamDistributions);
+        const priceSelection = streamDistributions[stream.id]?.price ?? "mode";
+        const growthSelection = streamDistributions[stream.id]?.growth ?? "mode";
+        return streamRevenueAtMonthUtil(stream, m, data.timeline, streamMultiplier, priceSelection, growthSelection);
     };
 
     // Calculate cumulative revenue to date for a revenue stream

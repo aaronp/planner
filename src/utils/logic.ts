@@ -46,7 +46,7 @@ export function streamUnitsAtMonth(
     stream: RevenueStream,
     monthIndex: number,
     timeline: VentureData["timeline"],
-    streamDistributions: Record<string, DistributionSelection> = {}
+    growthSelection: DistributionSelection = "mode"
 ): number {
     // Check if stream has started (unlockEventId)
     const unlockEvent = timeline?.find((t) => t.id === stream.unlockEventId);
@@ -74,14 +74,14 @@ export function streamUnitsAtMonth(
     const monthsSinceStart = monthIndex - startMonth;
     const { initialUnits, acquisitionRate, churnRate, expansionRate } = stream.adoptionModel;
 
-    const distributionSelection = streamDistributions[stream.id] ?? "mode";
-    const acqRate = getDistributionMode(acquisitionRate, distributionSelection);
-    const churn = getDistributionMode(churnRate, distributionSelection) || 0;
-    const expansion = getDistributionMode(expansionRate, distributionSelection) || 0;
+    // Use growth selection for all growth-related distributions
+    const acqRate = getDistributionMode(acquisitionRate, growthSelection);
+    const churn = getDistributionMode(churnRate, growthSelection) || 0;
+    const expansion = getDistributionMode(expansionRate, growthSelection) || 0;
 
     // Get max units from market sizing SOM if available
     const maxUnits = stream.marketSizing?.som
-        ? getDistributionMode(stream.marketSizing.som, distributionSelection)
+        ? getDistributionMode(stream.marketSizing.som, growthSelection)
         : undefined;
 
     // Simple model: start with initial units, grow by acquisition rate, apply net churn/expansion
@@ -108,10 +108,10 @@ export function streamRevenueAtMonth(
     monthIndex: number,
     timeline: VentureData["timeline"],
     streamMultiplier: number = 1,
-    streamDistributions: Record<string, DistributionSelection> = {}
+    priceSelection: DistributionSelection = "mode",
+    growthSelection: DistributionSelection = "mode"
 ): number {
-    const distributionSelection = streamDistributions[stream.id] ?? "mode";
-    const priceMode = getDistributionMode(stream.unitEconomics.pricePerUnit, distributionSelection);
+    const priceMode = getDistributionMode(stream.unitEconomics.pricePerUnit, priceSelection);
     const billingFrequency = stream.unitEconomics.billingFrequency || "monthly";
 
     // Check if stream has started
@@ -122,7 +122,7 @@ export function streamRevenueAtMonth(
 
     // For monthly billing, all active units generate revenue each month
     if (billingFrequency === "monthly") {
-        const units = streamUnitsAtMonth(stream, monthIndex, timeline, streamDistributions);
+        const units = streamUnitsAtMonth(stream, monthIndex, timeline, growthSelection);
         return units * priceMode * streamMultiplier;
     }
 
@@ -130,7 +130,7 @@ export function streamRevenueAtMonth(
     // Each cohort pays when they join and then every contractLength months after
     if (billingFrequency === "annual") {
         const contractLength = stream.unitEconomics.contractLengthMonths
-            ? Math.round(getDistributionMode(stream.unitEconomics.contractLengthMonths, distributionSelection))
+            ? Math.round(getDistributionMode(stream.unitEconomics.contractLengthMonths, priceSelection))
             : 12;
 
         let totalRevenue = 0;
@@ -151,8 +151,8 @@ export function streamRevenueAtMonth(
             // and then applying the churn that would have occurred
 
             const { churnRate, expansionRate } = stream.adoptionModel;
-            const churn = getDistributionMode(churnRate, distributionSelection) || 0;
-            const expansion = getDistributionMode(expansionRate, distributionSelection) || 0;
+            const churn = getDistributionMode(churnRate, growthSelection) || 0;
+            const expansion = getDistributionMode(expansionRate, growthSelection) || 0;
             const netRetention = 1 - churn / 100 + expansion / 100;
 
             // Get units that joined in this cohort month (new acquisitions)
@@ -162,9 +162,9 @@ export function streamRevenueAtMonth(
                 cohortSize = stream.adoptionModel.initialUnits;
             } else {
                 // New acquisitions = change in units from previous month
-                const unitsAtCohortMonth = streamUnitsAtMonth(stream, cohortMonth, timeline, streamDistributions);
-                const unitsBeforeCohortMonth = streamUnitsAtMonth(stream, cohortMonth - 1, timeline, streamDistributions);
-                const acqRate = getDistributionMode(stream.adoptionModel.acquisitionRate, distributionSelection);
+                const unitsAtCohortMonth = streamUnitsAtMonth(stream, cohortMonth, timeline, growthSelection);
+                const unitsBeforeCohortMonth = streamUnitsAtMonth(stream, cohortMonth - 1, timeline, growthSelection);
+                const acqRate = getDistributionMode(stream.adoptionModel.acquisitionRate, growthSelection);
 
                 // New cohort size is approximately the acquisition rate
                 // (This is a simplification - the actual calc would need to separate growth from existing users)
@@ -193,15 +193,16 @@ export function streamAcquisitionCostsAtMonth(
     monthIndex: number,
     timeline: VentureData["timeline"],
     streamMultiplier: number = 1,
-    streamDistributions: Record<string, DistributionSelection> = {}
+    priceSelection: DistributionSelection = "mode",
+    growthSelection: DistributionSelection = "mode"
 ): { cac: number; onboarding: number; total: number } {
-    const units = streamUnitsAtMonth(stream, monthIndex, timeline, streamDistributions);
-    const unitsLastMonth = monthIndex > 0 ? streamUnitsAtMonth(stream, monthIndex - 1, timeline, streamDistributions) : 0;
+    const units = streamUnitsAtMonth(stream, monthIndex, timeline, growthSelection);
+    const unitsLastMonth = monthIndex > 0 ? streamUnitsAtMonth(stream, monthIndex - 1, timeline, growthSelection) : 0;
     const newUnits = Math.max(0, units - unitsLastMonth);
 
-    const distributionSelection = streamDistributions[stream.id] ?? "mode";
-    const cacPerUnit = getDistributionMode(stream.acquisitionCosts?.cacPerUnit, distributionSelection);
-    const onboardingPerUnit = getDistributionMode(stream.acquisitionCosts?.onboardingCostPerUnit, distributionSelection);
+    // CAC and onboarding costs are price-related (cost to acquire)
+    const cacPerUnit = getDistributionMode(stream.acquisitionCosts?.cacPerUnit, priceSelection);
+    const onboardingPerUnit = getDistributionMode(stream.acquisitionCosts?.onboardingCostPerUnit, priceSelection);
 
     const cac = newUnits * cacPerUnit * streamMultiplier;
     const onboarding = newUnits * onboardingPerUnit * streamMultiplier;
@@ -221,10 +222,11 @@ export function streamMarginAtMonth(
     monthIndex: number,
     timeline: VentureData["timeline"],
     streamMultiplier: number = 1,
-    streamDistributions: Record<string, DistributionSelection> = {}
+    priceSelection: DistributionSelection = "mode",
+    growthSelection: DistributionSelection = "mode"
 ): number {
-    const revenue = streamRevenueAtMonth(stream, monthIndex, timeline, streamMultiplier, streamDistributions);
-    const costs = streamAcquisitionCostsAtMonth(stream, monthIndex, timeline, streamMultiplier, streamDistributions).total;
+    const revenue = streamRevenueAtMonth(stream, monthIndex, timeline, streamMultiplier, priceSelection, growthSelection);
+    const costs = streamAcquisitionCostsAtMonth(stream, monthIndex, timeline, streamMultiplier, priceSelection, growthSelection).total;
     return revenue - costs;
 }
 
@@ -332,7 +334,8 @@ export function calculateStreamMonthlyMetrics(
     stream: RevenueStream,
     monthIndex: number,
     timeline: VentureData["timeline"],
-    distributionSelection: DistributionSelection = "mode",
+    priceSelection: DistributionSelection = "mode",
+    growthSelection: DistributionSelection = "mode",
     multiplier: number = 1
 ): {
     units: number;
@@ -346,27 +349,24 @@ export function calculateStreamMonthlyMetrics(
     totalCosts: number;
     netProfit: number;
 } {
-    // Use the stream-specific distribution selection
-    const streamDistributions = { [stream.id]: distributionSelection };
+    // Calculate units (uses growth selection)
+    const units = streamUnitsAtMonth(stream, monthIndex, timeline, growthSelection);
 
-    // Calculate units
-    const units = streamUnitsAtMonth(stream, monthIndex, timeline, streamDistributions);
+    // Calculate gross revenue (uses both price and growth selections)
+    const grossRevenue = streamRevenueAtMonth(stream, monthIndex, timeline, multiplier, priceSelection, growthSelection);
 
-    // Calculate gross revenue
-    const grossRevenue = streamRevenueAtMonth(stream, monthIndex, timeline, multiplier, streamDistributions);
+    // Calculate acquisition costs (uses both price and growth selections)
+    const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, monthIndex, timeline, multiplier, priceSelection, growthSelection);
 
-    // Calculate acquisition costs (CAC + onboarding)
-    const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, monthIndex, timeline, multiplier, streamDistributions);
-
-    // Calculate delivery costs based on delivery cost model
+    // Calculate delivery costs based on delivery cost model (uses price selection)
     let deliveryCosts = 0;
     if (stream.unitEconomics.deliveryCostModel.type === "grossMargin") {
-        const marginPct = getDistributionMode(stream.unitEconomics.deliveryCostModel.marginPct, distributionSelection);
+        const marginPct = getDistributionMode(stream.unitEconomics.deliveryCostModel.marginPct, priceSelection);
         // Cost = Revenue * (1 - margin%)
         deliveryCosts = grossRevenue * (1 - marginPct / 100);
     } else {
         // perUnitCost
-        const costPerUnit = getDistributionMode(stream.unitEconomics.deliveryCostModel.costPerUnit, distributionSelection);
+        const costPerUnit = getDistributionMode(stream.unitEconomics.deliveryCostModel.costPerUnit, priceSelection);
         deliveryCosts = units * costPerUnit;
     }
 

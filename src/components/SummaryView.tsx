@@ -88,12 +88,15 @@ export function SummaryView({ data, month }: { data: VentureData; month: number 
 
         return data.revenueStreams.map((stream) => {
             const streamMultiplier = multipliers.revenueStreams[stream.id] ?? 1;
+            const priceSelection = streamDistributions[stream.id]?.price ?? "mode";
+            const growthSelection = streamDistributions[stream.id]?.growth ?? "mode";
             const netRevenue = streamMarginAtMonth(
                 stream,
                 monthIndex,
                 data.timeline,
                 streamMultiplier,
-                streamDistributions
+                priceSelection,
+                growthSelection
             );
             const color = streamColors.get(stream.id) || "#4f46e5";
 

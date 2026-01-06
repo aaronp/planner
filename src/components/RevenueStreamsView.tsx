@@ -434,7 +434,8 @@ function StreamPreview({
     currency: string;
 }) {
     const [viewMode, setViewMode] = useState<"chart" | "table">("chart");
-    const [distributionSelection, setDistributionSelection] = useState<DistributionSelection>("mode");
+    const [priceSelection, setPriceSelection] = useState<DistributionSelection>("mode");
+    const [growthSelection, setGrowthSelection] = useState<DistributionSelection>("mode");
     const [multiplier, setMultiplier] = useState<number>(1);
 
     const chartData = useMemo(() => {
@@ -442,12 +443,13 @@ function StreamPreview({
         return months.map((m) => {
             const monthLabel = addMonths(ventureStart, m).slice(5, 7); // MM format
 
-            // Use the shared calculation function
+            // Use the shared calculation function with separate price and growth selections
             const metrics = calculateStreamMonthlyMetrics(
                 stream,
                 m,
                 timeline,
-                distributionSelection,
+                priceSelection,
+                growthSelection,
                 multiplier
             );
 
@@ -464,7 +466,7 @@ function StreamPreview({
                 netProfit: metrics.netProfit,
             };
         });
-    }, [stream, timeline, horizonMonths, ventureStart, distributionSelection, multiplier]);
+    }, [stream, timeline, horizonMonths, ventureStart, priceSelection, growthSelection, multiplier]);
 
     return (
         <Card className="rounded-2xl shadow-sm h-full">
@@ -499,56 +501,91 @@ function StreamPreview({
 
                     <Separator />
 
-                    {/* Risk Controls */}
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                            <Label className="text-xs font-medium text-muted-foreground">Risk Scenario:</Label>
-                            <div className="flex items-center gap-1 rounded-2xl border p-1">
+                    {/* Scenario Selectors - Two distinct rows */}
+                    <div className="rounded-2xl border bg-muted/30 p-3 space-y-3">
+                        <div className="text-xs font-semibold text-foreground mb-2">Revenue Projection Scenarios</div>
+
+                        {/* Price Scenario Row */}
+                        <div className="flex items-center gap-3">
+                            <Label className="text-xs font-semibold text-foreground w-16">Pricing:</Label>
+                            <div className="flex items-center gap-1 rounded-2xl border p-1 bg-background">
                                 <Button
                                     size="sm"
-                                    variant={distributionSelection === "min" ? "default" : "ghost"}
+                                    variant={priceSelection === "min" ? "default" : "ghost"}
                                     className="rounded-xl h-7 px-3 text-xs"
-                                    onClick={() => setDistributionSelection("min")}
+                                    onClick={() => setPriceSelection("min")}
                                 >
                                     Bear
                                 </Button>
                                 <Button
                                     size="sm"
-                                    variant={distributionSelection === "mode" ? "default" : "ghost"}
+                                    variant={priceSelection === "mode" ? "default" : "ghost"}
                                     className="rounded-xl h-7 px-3 text-xs"
-                                    onClick={() => setDistributionSelection("mode")}
+                                    onClick={() => setPriceSelection("mode")}
                                 >
-                                    Expected
+                                    Mode
                                 </Button>
                                 <Button
                                     size="sm"
-                                    variant={distributionSelection === "max" ? "default" : "ghost"}
+                                    variant={priceSelection === "max" ? "default" : "ghost"}
                                     className="rounded-xl h-7 px-3 text-xs"
-                                    onClick={() => setDistributionSelection("max")}
+                                    onClick={() => setPriceSelection("max")}
                                 >
                                     Bull
                                 </Button>
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <Label className="text-xs font-medium text-muted-foreground">Risk Scale:</Label>
-                                <span className="text-xs font-mono font-semibold">{multiplier.toFixed(2)}x</span>
+                        {/* Growth Scenario Row */}
+                        <div className="flex items-center gap-3">
+                            <Label className="text-xs font-semibold text-foreground w-16">Growth:</Label>
+                            <div className="flex items-center gap-1 rounded-2xl border p-1 bg-background">
+                                <Button
+                                    size="sm"
+                                    variant={growthSelection === "min" ? "default" : "ghost"}
+                                    className="rounded-xl h-7 px-3 text-xs"
+                                    onClick={() => setGrowthSelection("min")}
+                                >
+                                    Bear
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant={growthSelection === "mode" ? "default" : "ghost"}
+                                    className="rounded-xl h-7 px-3 text-xs"
+                                    onClick={() => setGrowthSelection("mode")}
+                                >
+                                    Mode
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant={growthSelection === "max" ? "default" : "ghost"}
+                                    className="rounded-xl h-7 px-3 text-xs"
+                                    onClick={() => setGrowthSelection("max")}
+                                >
+                                    Bull
+                                </Button>
                             </div>
-                            <Slider
-                                value={[multiplier]}
-                                onValueChange={(values) => setMultiplier(values[0] ?? 1)}
-                                min={0.5}
-                                max={2}
-                                step={0.1}
-                                className="w-full"
-                            />
-                            <div className="flex justify-between text-xs text-muted-foreground">
-                                <span>0.5x</span>
-                                <span>1.0x</span>
-                                <span>2.0x</span>
-                            </div>
+                        </div>
+                    </div>
+
+                    {/* Risk Scale Slider */}
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium text-muted-foreground">Risk Scale:</Label>
+                            <span className="text-xs font-mono font-semibold">{multiplier.toFixed(2)}x</span>
+                        </div>
+                        <Slider
+                            value={[multiplier]}
+                            onValueChange={(values) => setMultiplier(values[0] ?? 1)}
+                            min={0.5}
+                            max={2}
+                            step={0.1}
+                            className="w-full"
+                        />
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>0.5x</span>
+                            <span>1.0x</span>
+                            <span>2.0x</span>
                         </div>
                     </div>
                 </div>

@@ -411,13 +411,15 @@ export function TablePage({ data, month }: TablePageProps) {
 
                                                     // Use centralized logic
                                                     const streamMultiplier = multipliers.revenueStreams[stream.id] ?? 1;
-                                                    const units = streamUnitsAtMonth(stream, idx, data.timeline, streamDistributions);
-                                                    const priceMode = getDistributionMode(stream.unitEconomics.pricePerUnit, streamDistributions);
-                                                    const streamRev = streamRevenueAtMonth(stream, idx, data.timeline, streamMultiplier, streamDistributions);
-                                                    const costs = streamAcquisitionCostsAtMonth(stream, idx, data.timeline, streamMultiplier, streamDistributions);
+                                                    const priceSelection = streamDistributions[stream.id]?.price ?? "mode";
+                                                    const growthSelection = streamDistributions[stream.id]?.growth ?? "mode";
+                                                    const units = streamUnitsAtMonth(stream, idx, data.timeline, growthSelection);
+                                                    const priceMode = getDistributionMode(stream.unitEconomics.pricePerUnit, priceSelection);
+                                                    const streamRev = streamRevenueAtMonth(stream, idx, data.timeline, streamMultiplier, priceSelection, growthSelection);
+                                                    const costs = streamAcquisitionCostsAtMonth(stream, idx, data.timeline, streamMultiplier, priceSelection, growthSelection);
                                                     const margin = streamRev - costs.total;
 
-                                                    const unitsLastMonth = idx > 0 ? streamUnitsAtMonth(stream, idx - 1, data.timeline, streamDistributions) : 0;
+                                                    const unitsLastMonth = idx > 0 ? streamUnitsAtMonth(stream, idx - 1, data.timeline, growthSelection) : 0;
                                                     const newUnits = Math.max(0, units - unitsLastMonth);
 
                                                     return (
@@ -510,8 +512,10 @@ export function TablePage({ data, month }: TablePageProps) {
                                                         {fmtCurrency(
                                                             data.revenueStreams.reduce((sum, stream) => {
                                                                 const streamMultiplier = multipliers.revenueStreams[stream.id] ?? 1;
-                                                                const streamRev = streamRevenueAtMonth(stream, idx, data.timeline, streamMultiplier, streamDistributions);
-                                                                const costs = streamAcquisitionCostsAtMonth(stream, idx, data.timeline, streamMultiplier, streamDistributions);
+                                                                const priceSelection = streamDistributions[stream.id]?.price ?? "mode";
+                                                                const growthSelection = streamDistributions[stream.id]?.growth ?? "mode";
+                                                                const streamRev = streamRevenueAtMonth(stream, idx, data.timeline, streamMultiplier, priceSelection, growthSelection);
+                                                                const costs = streamAcquisitionCostsAtMonth(stream, idx, data.timeline, streamMultiplier, priceSelection, growthSelection);
                                                                 return sum + (streamRev - costs.total);
                                                             }, 0),
                                                             currency

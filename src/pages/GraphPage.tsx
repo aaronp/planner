@@ -147,8 +147,10 @@ export function GraphPage({ data }: GraphPageProps) {
             if (data.revenueStreams) {
                 for (const stream of data.revenueStreams) {
                     const streamMultiplier = multipliers.revenueStreams[stream.id] ?? 1;
-                    const grossRevenue = streamRevenueAtMonth(stream, m, data.timeline, streamMultiplier, streamDistributions);
-                    const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline, streamMultiplier, streamDistributions);
+                    const priceSelection = streamDistributions[stream.id]?.price ?? "mode";
+                    const growthSelection = streamDistributions[stream.id]?.growth ?? "mode";
+                    const grossRevenue = streamRevenueAtMonth(stream, m, data.timeline, streamMultiplier, priceSelection, growthSelection);
+                    const acquisitionCosts = streamAcquisitionCostsAtMonth(stream, m, data.timeline, streamMultiplier, priceSelection, growthSelection);
                     const netRevenue = grossRevenue - acquisitionCosts.total;
                     row[stream.id] = netRevenue;
                     totalNetRevenue += netRevenue;

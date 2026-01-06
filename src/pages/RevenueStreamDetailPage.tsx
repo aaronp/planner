@@ -12,7 +12,9 @@ import { ArrowLeft, Trash2, TrendingUp, ChevronLeft, ChevronRight, BarChart3, Ta
 import { fmtCurrency } from "../utils/formatUtils";
 import { calculateStreamMonthlyMetrics, getDistributionMode } from "../utils/logic";
 import { Line, LineChart, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, Legend } from "recharts";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useRisk } from "../contexts/RiskContext";
+import type { DistributionSelection } from "../contexts/RiskContext";
 
 type RevenueStreamDetailPageProps = {
     data: VentureData;
@@ -119,16 +121,43 @@ function DistributionInput({
 export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }: RevenueStreamDetailPageProps) {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const { streamDistributions, setStreamDistributions } = useRisk();
 
     // Collapsible panel state
     const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
     const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
-
-    // Preview distribution selection
-    const [previewDistribution, setPreviewDistribution] = useState<"min" | "mode" | "max">("mode");
     const [revenuePreviewMode, setRevenuePreviewMode] = useState<"graph" | "table">("graph");
 
     const stream = (data.revenueStreams ?? []).find((s) => s.id === id);
+
+    // Get distribution selections from global context, defaulting to "mode"
+    const pricePreviewDistribution = streamDistributions[id!]?.price ?? "mode";
+    const growthPreviewDistribution = streamDistributions[id!]?.growth ?? "mode";
+
+    // Update global context when selections change
+    const setPricePreviewDistribution = (selection: DistributionSelection) => {
+        if (!id) return;
+        setStreamDistributions({
+            ...streamDistributions,
+            [id]: {
+                ...streamDistributions[id],
+                price: selection,
+                growth: streamDistributions[id]?.growth ?? "mode",
+            },
+        });
+    };
+
+    const setGrowthPreviewDistribution = (selection: DistributionSelection) => {
+        if (!id) return;
+        setStreamDistributions({
+            ...streamDistributions,
+            [id]: {
+                ...streamDistributions[id],
+                price: streamDistributions[id]?.price ?? "mode",
+                growth: selection,
+            },
+        });
+    };
 
     // Update stream helper
     const updateStream = (updates: Partial<RevenueStream>) => {
@@ -183,36 +212,36 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
     const previewData = useMemo(() => {
         if (!stream) return [];
 
-        // Create a modified stream with fixed distribution values based on selection
+        // Create a modified stream with fixed distribution values based on separate price and growth selections
         const previewStream: RevenueStream = {
             ...stream,
             unitEconomics: {
                 ...stream.unitEconomics,
-                pricePerUnit: distributionToFixed(stream.unitEconomics.pricePerUnit, previewDistribution),
+                pricePerUnit: distributionToFixed(stream.unitEconomics.pricePerUnit, pricePreviewDistribution),
                 deliveryCostModel: stream.unitEconomics.deliveryCostModel.type === "grossMargin"
                     ? {
                         type: "grossMargin",
-                        marginPct: distributionToFixed(stream.unitEconomics.deliveryCostModel.marginPct, previewDistribution),
+                        marginPct: distributionToFixed(stream.unitEconomics.deliveryCostModel.marginPct, pricePreviewDistribution),
                     }
                     : {
                         type: "perUnitCost",
-                        costPerUnit: distributionToFixed(stream.unitEconomics.deliveryCostModel.costPerUnit, previewDistribution),
+                        costPerUnit: distributionToFixed(stream.unitEconomics.deliveryCostModel.costPerUnit, pricePreviewDistribution),
                     },
             },
             adoptionModel: {
                 ...stream.adoptionModel,
-                acquisitionRate: distributionToFixed(stream.adoptionModel.acquisitionRate, previewDistribution),
+                acquisitionRate: distributionToFixed(stream.adoptionModel.acquisitionRate, growthPreviewDistribution),
                 churnRate: stream.adoptionModel.churnRate
-                    ? distributionToFixed(stream.adoptionModel.churnRate, previewDistribution)
+                    ? distributionToFixed(stream.adoptionModel.churnRate, growthPreviewDistribution)
                     : undefined,
                 expansionRate: stream.adoptionModel.expansionRate
-                    ? distributionToFixed(stream.adoptionModel.expansionRate, previewDistribution)
+                    ? distributionToFixed(stream.adoptionModel.expansionRate, growthPreviewDistribution)
                     : undefined,
             },
             acquisitionCosts: {
-                cacPerUnit: distributionToFixed(stream.acquisitionCosts.cacPerUnit, previewDistribution),
+                cacPerUnit: distributionToFixed(stream.acquisitionCosts.cacPerUnit, pricePreviewDistribution),
                 onboardingCostPerUnit: stream.acquisitionCosts.onboardingCostPerUnit
-                    ? distributionToFixed(stream.acquisitionCosts.onboardingCostPerUnit, previewDistribution)
+                    ? distributionToFixed(stream.acquisitionCosts.onboardingCostPerUnit, pricePreviewDistribution)
                     : undefined,
             },
         };
@@ -235,7 +264,7 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
             });
         }
         return result;
-    }, [stream, data.meta.horizonMonths, data.timeline, previewDistribution]);
+    }, [stream, data.meta.horizonMonths, data.timeline, pricePreviewDistribution, growthPreviewDistribution]);
 
     if (!stream) {
         return (
@@ -317,16 +346,46 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
                         </CardHeader>
                         <CardContent>
                             <Tabs defaultValue="overview" className="space-y-4">
-                                <TabsList className="rounded-2xl w-full grid grid-cols-3">
-                                    <TabsTrigger value="overview">Overview</TabsTrigger>
-                                    <TabsTrigger value="pricing">Pricing</TabsTrigger>
-                                    <TabsTrigger value="growth">Growth</TabsTrigger>
-                                </TabsList>
-                                <TabsList className="rounded-2xl w-full grid grid-cols-3">
-                                    <TabsTrigger value="costs">Costs</TabsTrigger>
-                                    <TabsTrigger value="assumptions">Assumptions</TabsTrigger>
-                                    <TabsTrigger value="risks">Risks</TabsTrigger>
-                                </TabsList>
+                                <div className="flex flex-col gap-2 border-b">
+                                    <div className="flex gap-6">
+                                        <TabsTrigger
+                                            value="overview"
+                                            className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2"
+                                        >
+                                            Overview
+                                        </TabsTrigger>
+                                        <TabsTrigger
+                                            value="pricing"
+                                            className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2"
+                                        >
+                                            Pricing
+                                        </TabsTrigger>
+                                        <TabsTrigger
+                                            value="growth"
+                                            className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2"
+                                        >
+                                            Growth
+                                        </TabsTrigger>
+                                        <TabsTrigger
+                                            value="costs"
+                                            className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2"
+                                        >
+                                            Costs
+                                        </TabsTrigger>
+                                        <TabsTrigger
+                                            value="assumptions"
+                                            className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2"
+                                        >
+                                            Assumptions
+                                        </TabsTrigger>
+                                        <TabsTrigger
+                                            value="risks"
+                                            className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold rounded-none bg-transparent px-0 pb-2"
+                                        >
+                                            Risks
+                                        </TabsTrigger>
+                                    </div>
+                                </div>
 
                 {/* Overview Tab */}
                 <TabsContent value="overview">
@@ -881,31 +940,72 @@ export function RevenueStreamDetailPage({ data, setRevenueStreams, setTimeline }
                                     )}
                                 </div>
                             </div>
-                            <div className="flex gap-1 mt-3">
-                                <Button
-                                    variant={previewDistribution === "min" ? "default" : "outline"}
-                                    size="sm"
-                                    onClick={() => setPreviewDistribution("min")}
-                                    className="rounded-xl flex-1 text-xs h-7"
-                                >
-                                    Bear (Min)
-                                </Button>
-                                <Button
-                                    variant={previewDistribution === "mode" ? "default" : "outline"}
-                                    size="sm"
-                                    onClick={() => setPreviewDistribution("mode")}
-                                    className="rounded-xl flex-1 text-xs h-7"
-                                >
-                                    Expected (Mode)
-                                </Button>
-                                <Button
-                                    variant={previewDistribution === "max" ? "default" : "outline"}
-                                    size="sm"
-                                    onClick={() => setPreviewDistribution("max")}
-                                    className="rounded-xl flex-1 text-xs h-7"
-                                >
-                                    Bull (Max)
-                                </Button>
+
+                            {/* Scenario Selectors - Two separate rows inline */}
+                            <div className="rounded-2xl border bg-muted/30 p-3 space-y-2 mt-3">
+                                <div className="text-xs font-semibold text-foreground mb-1">Revenue Projection Scenarios</div>
+
+                                {/* Price Scenario Row */}
+                                <div className="flex items-center gap-2">
+                                    <Label className="text-xs font-medium text-muted-foreground w-14 flex-shrink-0">Pricing:</Label>
+                                    <div className="flex gap-1 flex-1">
+                                        <Button
+                                            variant={pricePreviewDistribution === "min" ? "default" : "outline"}
+                                            size="sm"
+                                            onClick={() => setPricePreviewDistribution("min")}
+                                            className="rounded-xl flex-1 text-xs h-7"
+                                        >
+                                            Bear
+                                        </Button>
+                                        <Button
+                                            variant={pricePreviewDistribution === "mode" ? "default" : "outline"}
+                                            size="sm"
+                                            onClick={() => setPricePreviewDistribution("mode")}
+                                            className="rounded-xl flex-1 text-xs h-7"
+                                        >
+                                            Mode
+                                        </Button>
+                                        <Button
+                                            variant={pricePreviewDistribution === "max" ? "default" : "outline"}
+                                            size="sm"
+                                            onClick={() => setPricePreviewDistribution("max")}
+                                            className="rounded-xl flex-1 text-xs h-7"
+                                        >
+                                            Bull
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {/* Growth Scenario Row */}
+                                <div className="flex items-center gap-2">
+                                    <Label className="text-xs font-medium text-muted-foreground w-14 flex-shrink-0">Growth:</Label>
+                                    <div className="flex gap-1 flex-1">
+                                        <Button
+                                            variant={growthPreviewDistribution === "min" ? "default" : "outline"}
+                                            size="sm"
+                                            onClick={() => setGrowthPreviewDistribution("min")}
+                                            className="rounded-xl flex-1 text-xs h-7"
+                                        >
+                                            Bear
+                                        </Button>
+                                        <Button
+                                            variant={growthPreviewDistribution === "mode" ? "default" : "outline"}
+                                            size="sm"
+                                            onClick={() => setGrowthPreviewDistribution("mode")}
+                                            className="rounded-xl flex-1 text-xs h-7"
+                                        >
+                                            Mode
+                                        </Button>
+                                        <Button
+                                            variant={growthPreviewDistribution === "max" ? "default" : "outline"}
+                                            size="sm"
+                                            onClick={() => setGrowthPreviewDistribution("max")}
+                                            className="rounded-xl flex-1 text-xs h-7"
+                                        >
+                                            Bull
+                                        </Button>
+                                    </div>
+                                </div>
                             </div>
                         </CardHeader>
                         <CardContent>
