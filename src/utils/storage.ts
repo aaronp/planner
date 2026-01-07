@@ -278,3 +278,53 @@ export function loadModel(id: string): SavedModel | null {
     const model = models.find(m => m.id === id);
     return model ?? null;
 }
+
+// ============================================================================
+// Wizard Models Management
+// ============================================================================
+
+const WIZARD_MODELS_KEY = "venture-planner:wizard-models";
+
+export type SavedWizardModel = {
+    id: string;
+    name: string;
+    data: any; // WizardData type from wizard.ts
+    savedAt: string; // ISO timestamp
+};
+
+export function getSavedWizardModels(): SavedWizardModel[] {
+    try {
+        const raw = localStorage.getItem(WIZARD_MODELS_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed;
+    } catch {
+        return [];
+    }
+}
+
+export function saveWizardModel(name: string, data: any): SavedWizardModel {
+    const models = getSavedWizardModels();
+    const newModel: SavedWizardModel = {
+        id: `wizard_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+        name,
+        data,
+        savedAt: new Date().toISOString(),
+    };
+    models.push(newModel);
+    localStorage.setItem(WIZARD_MODELS_KEY, JSON.stringify(models, null, 2));
+    return newModel;
+}
+
+export function deleteWizardModel(id: string): void {
+    const models = getSavedWizardModels();
+    const filtered = models.filter(m => m.id !== id);
+    localStorage.setItem(WIZARD_MODELS_KEY, JSON.stringify(filtered, null, 2));
+}
+
+export function loadWizardModel(id: string): SavedWizardModel | null {
+    const models = getSavedWizardModels();
+    const model = models.find(m => m.id === id);
+    return model ?? null;
+}

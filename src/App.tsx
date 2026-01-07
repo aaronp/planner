@@ -35,6 +35,7 @@ import { RevenueStreamsPage } from "./pages/RevenueStreamsPage";
 import { RevenueStreamDetailPage } from "./pages/RevenueStreamDetailPage";
 import { DataPage } from "./pages/DataPage";
 import { ROIPage } from "./pages/ROIPage";
+import { WizardPage } from "./pages/WizardPage";
 
 /**
  * Venture Proposal Planner
@@ -284,6 +285,7 @@ function AppContent() {
 
                     {/* Navigation */}
                     <nav className="flex gap-2 px-4">
+                        <NavLink to="/wizard">Wizard</NavLink>
                         <NavLink to="/costs">Costs</NavLink>
                         <NavLink to="/revenue-streams">Revenue Streams</NavLink>
                         <NavLink to="/phases">Phases</NavLink>
@@ -295,6 +297,7 @@ function AppContent() {
                     {/* Routes */}
                     <Routes>
                         <Route path="/" element={<Navigate to="/costs" replace />} />
+                        <Route path="/wizard" element={<WizardPage />} />
                         <Route
                             path="/roi"
                             element={<ROIPage data={data} month={month} />}
